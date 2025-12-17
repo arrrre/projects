@@ -19,15 +19,6 @@ struct editorConfig {
     char **filelines; // Pointer to an array of string pointers (the file content)
 };
 
-struct editorConfig E;
-
-void initEditor() {
-    E.cx = 0;
-    E.cy = 0;
-    E.numlines = 0;
-    E.filelines = NULL;
-}
-
 void enableRawMode() {
     hStdin = GetStdHandle(STD_INPUT_HANDLE);
     if (hStdin == INVALID_HANDLE_VALUE) {
@@ -87,71 +78,71 @@ int editorReadKey() {
     return c;
 }
 
-void editorRefreshScreen() {
+void editorRefreshScreen(struct editorConfig* E) {
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     printf("\x1b[2J"); 
     printf("\x1b[H"); 
 
-    for (int i = 0; i < E.numlines; i++) {
-        printf("%s", E.filelines[i]);
+    for (int i = 0; i < E->numlines; i++) {
+        printf("%s", E->filelines[i]);
         printf("\r\n"); 
     }
 
-    COORD final_pos = {E.cx, E.cy};
+    COORD final_pos = {E->cx, E->cy};
     SetConsoleCursorPosition(hConsole, final_pos);
 }
 
-void editorMoveCursor(int key) {
+void editorMoveCursor(struct editorConfig* E, int key) {
     switch (key) {
         case ARROW_LEFT:
-            if (E.cx > 0) {
-                E.cx--;
-            } else if (E.cy > 0) {
-                E.cy--;
-                E.cx = strlen(E.filelines[E.cy]);
+            if (E->cx > 0) {
+                E->cx--;
+            } else if (E->cy > 0) {
+                E->cy--;
+                E->cx = strlen(E->filelines[E->cy]);
             }
             break;
         case ARROW_RIGHT:
-            if (E.cx < strlen(E.filelines[E.cy])) {
-                E.cx++;
-            } else if (E.cy < E.numlines - 1) {
-                E.cy++;
-                E.cx = 0;
+            if (E->cx < strlen(E->filelines[E->cy])) {
+                E->cx++;
+            } else if (E->cy < E->numlines - 1) {
+                E->cy++;
+                E->cx = 0;
             }
             break;
         case ARROW_UP:
-            if (E.cy > 0) E.cy--;
+            if (E->cy > 0) E->cy--;
             break;
         case ARROW_DOWN:
-            if (E.cy < E.numlines - 1) E.cy++;
+            if (E->cy < E->numlines - 1) E->cy++;
             break;
         case HOME:
-            E.cx = 0;
+            E->cx = 0;
             break;
         case END:
-            E.cx = strlen(E.filelines[E.cy]);
+            E->cx = strlen(E->filelines[E->cy]);
             break;
     }
     
-    if (E.cy < E.numlines) {
-        size_t linelen = strlen(E.filelines[E.cy]);
-        if (E.cx > linelen) E.cx = linelen;
+    if (E->cy < E->numlines) {
+        size_t linelen = strlen(E->filelines[E->cy]);
+        if (E->cx > linelen) E->cx = linelen;
     }
 }
 
-void editorMoveCursorBack() {
+void editorMoveCursorBack(struct editorConfig* E) {
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD pos = {strlen(E.filelines[E.numlines - 1]), E.numlines - 1};
+    COORD pos = {strlen(E->filelines[E->numlines - 1]), E->numlines - 1};
     SetConsoleCursorPosition(hConsole, pos);
 }
 
-void editorAppendRow(char *s) {
-    E.filelines = realloc(E.filelines, sizeof(char *) * (E.numlines + 1));
-    E.filelines[E.numlines] = strdup(s);
-    E.numlines++;
+void editorAppendRow(struct editorConfig* E, char *s) {
+    E->filelines = realloc(E->filelines, sizeof(char *) * (E->numlines + 1));
+    E->filelines[E->numlines] = strdup(s);
+    E->numlines++;
 }
 
-void editorOpen(const char *filename) {
+void editorOpen(struct editorConfig* E, const char *filename) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
         perror("fopen");
@@ -169,18 +160,18 @@ void editorOpen(const char *filename) {
         if (len > 0 && buffer[len - 1] == '\n') {
             buffer[len - 1] = '\0';
         }
-        editorAppendRow(buffer);
+        editorAppendRow(E, buffer);
     }
 
     fclose(fp);
 }
 
-char *editorRowsToString(int *buflen) {
+char *editorRowsToString(struct editorConfig* E, int *buflen) {
     // 1. Calculate the total size needed for the entire file content
     int total_len = 0;
-    for (int i = 0; i < E.numlines; i++) {
+    for (int i = 0; i < E->numlines; i++) {
         // Line length + 1 for the newline character (\n)
-        total_len += strlen(E.filelines[i]) + 1; 
+        total_len += strlen(E->filelines[i]) + 1; 
     }
     *buflen = total_len;
 
@@ -191,11 +182,11 @@ char *editorRowsToString(int *buflen) {
     char *p = buf; // Pointer to track current position in the buffer
     
     // 3. Copy each line into the buffer, adding a newline
-    for (int i = 0; i < E.numlines; i++) {
-        size_t len = strlen(E.filelines[i]);
+    for (int i = 0; i < E->numlines; i++) {
+        size_t len = strlen(E->filelines[i]);
         
         // Copy the line content
-        memcpy(p, E.filelines[i], len);
+        memcpy(p, E->filelines[i], len);
         p += len;
         
         // Add the newline character
@@ -206,11 +197,11 @@ char *editorRowsToString(int *buflen) {
     return buf;
 }
 
-void editorSave(const char *filename) {
-    if (E.numlines == 0) return; // Nothing to save
+void editorSave(struct editorConfig* E, const char *filename) {
+    if (E->numlines == 0) return; // Nothing to save
 
     int len;
-    char *buf = editorRowsToString(&len);
+    char *buf = editorRowsToString(E, &len);
     if (buf == NULL) {
         perror("Memory allocation for save failed");
         return;
@@ -239,91 +230,92 @@ void editorSave(const char *filename) {
     free(buf);
 }
 
-void editorInsertChar(int c) {
-    if (E.cy >= E.numlines) {
-        editorAppendRow(""); 
+void editorInsertChar(struct editorConfig* E, int c) {
+    if (E->cy >= E->numlines) {
+        editorAppendRow(E, ""); 
     }
 
-    char *line = E.filelines[E.cy];
+    char *line = E->filelines[E->cy];
     size_t len = strlen(line);
-    E.filelines[E.cy] = realloc(line, len + 2); 
-    line = E.filelines[E.cy]; // Update the line pointer after realloc
-    memmove(&line[E.cx + 1], &line[E.cx], len - E.cx + 1);
-    line[E.cx] = (char)c;
-    E.cx++;
+    E->filelines[E->cy] = realloc(line, len + 2); 
+    line = E->filelines[E->cy]; // Update the line pointer after realloc
+    memmove(&line[E->cx + 1], &line[E->cx], len - E->cx + 1);
+    line[E->cx] = (char)c;
+    E->cx++;
 }
 
-void editorDelChar() {
-    if (E.cy == 0 && E.cx == 0) return;
-    if (E.cy >= E.numlines) return;
-    if (E.cx > 0) {
-        char *line = E.filelines[E.cy];
+void editorDelChar(struct editorConfig* E) {
+    if (E->cy == 0 && E->cx == 0) return;
+    if (E->cy >= E->numlines) return;
+    if (E->cx > 0) {
+        char *line = E->filelines[E->cy];
         size_t len = strlen(line);
-        memmove(&line[E.cx - 1], &line[E.cx], len - E.cx + 1);
-        E.filelines[E.cy] = realloc(line, len);
-        E.cx--;
+        memmove(&line[E->cx - 1], &line[E->cx], len - E->cx + 1);
+        E->filelines[E->cy] = realloc(line, len);
+        E->cx--;
     } else {
-        // Case 2: Cursor is at the start of a line (E.cx == 0) -> Join with the previous line
+        // Case 2: Cursor is at the start of a line (E->cx == 0) -> Join with the previous line
         
         // This is complex and involves:
         // a) Getting the previous line's length.
-        // b) Appending the current line's text to the previous line.
+        // b) Appending the current line's text to the previous linE->
         // c) Deleting the current line from the filelines array.
         // d) Moving the cursor to the point of the join.
         
         // **For simplicity, let's skip line joining for the initial version.**
-        // Just prevent backspace if E.cx == 0 for now.
+        // Just prevent backspace if E->cx == 0 for now.
     }
 }
 
-void editorInsertNewline() {
-    if (E.cy == E.numlines - 1 && E.cx == strlen(E.filelines[E.cy])) {
-        editorAppendRow("");
+void editorInsertNewline(struct editorConfig* E) {
+    if (E->cy == E->numlines - 1 && E->cx == strlen(E->filelines[E->cy])) {
+        editorAppendRow(E, "");
     } else {
         // Case 1: Split the current line
-        char *current_line = E.filelines[E.cy];
+        char *current_line = E->filelines[E->cy];
         size_t current_len = strlen(current_line);
         
         // --- A. Create the new line (text *after* the cursor) ---
-        // Duplicate the portion of the string starting at E.cx
-        // strdup will allocate memory for the new line.
-        char *new_line_text = strdup(&current_line[E.cx]);
+        // Duplicate the portion of the string starting at E->cx
+        // strdup will allocate memory for the new linE->
+        char *new_line_text = strdup(&current_line[E->cx]);
 
         // --- B. Truncate the current line (text *before* the cursor) ---
         // The current line ends where the new line begins, plus the null terminator.
         // Reallocate to save memory and ensure correct string termination.
-        E.filelines[E.cy] = realloc(current_line, E.cx + 1);
-        E.filelines[E.cy][E.cx] = '\0'; // Manually null-terminate the truncated line
+        E->filelines[E->cy] = realloc(current_line, E->cx + 1);
+        E->filelines[E->cy][E->cx] = '\0'; // Manually null-terminate the truncated line
 
         // --- C. Make room in the filelines array for the new line ---
-        // Resize the array of char* pointers to hold one more line.
-        E.filelines = realloc(E.filelines, sizeof(char *) * (E.numlines + 1));
+        // Resize the array of char* pointers to hold one more linE->
+        E->filelines = realloc(E->filelines, sizeof(char *) * (E->numlines + 1));
 
         // Shift all line pointers *after* the current line one position down
-        // The shift starts at E.cy + 1 and moves E.numlines - E.cy pointers.
-        memmove(&E.filelines[E.cy + 2], &E.filelines[E.cy + 1], 
-                sizeof(char *) * (E.numlines - E.cy));
+        // The shift starts at E->cy + 1 and moves E->numlines - E->cy pointers.
+        memmove(&E->filelines[E->cy + 2], &E->filelines[E->cy + 1], 
+                sizeof(char *) * (E->numlines - E->cy));
 
         // --- D. Insert the new line pointer ---
-        E.filelines[E.cy + 1] = new_line_text;
-        E.numlines++;
+        E->filelines[E->cy + 1] = new_line_text;
+        E->numlines++;
     }
 
-    // --- E. Update Cursor Position ---
-    E.cy++;  // Move down one row to the new line
-    E.cx = 0; // Move cursor to the beginning of the new line
+    // --- E-> Update Cursor Position ---
+    E->cy++;  // Move down one row to the new line
+    E->cx = 0; // Move cursor to the beginning of the new line
 }
 
 int main(int argc, char *argv[]) {
-    initEditor();
-    const char *filename = (argc >= 2) ? argv[1] : "new_file.txt"; 
-    if (argc >= 2) editorOpen(argv[1]);
+    struct editorConfig ec = {0, 0, 0, NULL};
+
+    const char *filename = (argc >= 2) ? argv[1] : "new_file.txt";
+    if (argc >= 2) editorOpen(&ec, filename);
 
     enableRawMode();
 
     int running = 1;
     while (running) {
-        editorRefreshScreen();
+        editorRefreshScreen(&ec);
 
         int key_pressed = editorReadKey();
         switch (key_pressed) {
@@ -333,33 +325,33 @@ int main(int argc, char *argv[]) {
             case ARROW_RIGHT:
             case HOME:
             case END:
-                editorMoveCursor(key_pressed);
+                editorMoveCursor(&ec, key_pressed);
                 break;
             case BACKSPACE:
-                editorDelChar();
+                editorDelChar(&ec);
                 break;
             case ENTER:
-                editorInsertNewline();
+                editorInsertNewline(&ec);
                 break;
             case CTRL_S:
-                editorSave(filename);
+                editorSave(&ec, filename);
                 break;
             case CTRL_Q:
                 running = 0;
             default:
-                if (key_pressed != 0) editorInsertChar(key_pressed);
+                if (key_pressed != 0) editorInsertChar(&ec, key_pressed);
                 break;
         }
     }
 
-    editorMoveCursorBack();
+    editorMoveCursorBack(&ec);
     disableRawMode();
 
     // Clean up memory before exit
-    for (int i = 0; i < E.numlines; i++) {
-        free(E.filelines[i]);
+    for (int i = 0; i < ec.numlines; i++) {
+        free(ec.filelines[i]);
     }
-    free(E.filelines);
+    free(ec.filelines);
 
     return 0;
 }
