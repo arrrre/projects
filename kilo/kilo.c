@@ -65,7 +65,8 @@ enum editorKey {
     DEL,
     BACKSPACE = 8,
     ENTER = 13,
-    CTRL_S = 19
+    CTRL_S = 19,
+    CTRL_Q = 17
 };
 
 int editorReadKey() {
@@ -320,8 +321,11 @@ int main(int argc, char *argv[]) {
 
     enableRawMode();
 
-    int key_pressed;
-    do {
+    int running = 1;
+    while (running) {
+        editorRefreshScreen();
+
+        int key_pressed = editorReadKey();
         switch (key_pressed) {
             case ARROW_UP:
             case ARROW_DOWN:
@@ -340,12 +344,13 @@ int main(int argc, char *argv[]) {
             case CTRL_S:
                 editorSave(filename);
                 break;
+            case CTRL_Q:
+                running = 0;
             default:
                 if (key_pressed != 0) editorInsertChar(key_pressed);
                 break;
         }
-        editorRefreshScreen();
-    } while ((key_pressed = editorReadKey()) != 'q');
+    }
 
     editorMoveCursorBack();
     disableRawMode();
