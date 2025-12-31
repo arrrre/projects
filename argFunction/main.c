@@ -114,13 +114,13 @@ void printTree(Node* node, int level, char* prefix) {
     printf("%s|-- ", prefix);
 
     switch (node->type) {
-        case NODE_NUM:  printf("NUMBER: %f\n", node->value); break;
-        case NODE_VAR:  printf("VARIABLE: x\n"); break;
-        case NODE_FUNC: printf("FUNCTION: %s\n", node->funcName); break;
         case NODE_ADD:  printf("OP: +\n"); break;
         case NODE_SUB:  printf("OP: -\n"); break;
         case NODE_MUL:  printf("OP: *\n"); break;
         case NODE_DIV:  printf("OP: /\n"); break;
+        case NODE_NUM:  printf("NUMBER: %f\n", node->value); break;
+        case NODE_VAR:  printf("VARIABLE: x\n"); break;
+        case NODE_FUNC: printf("FUNCTION: %s\n", node->funcName); break;
     }
 
     char newPrefix[256];
