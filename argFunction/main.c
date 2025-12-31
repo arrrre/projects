@@ -170,15 +170,19 @@ int main(int argc, char** argv) {
         return 0;
     }
     float lower = 0, upper = 1, step = 0.1;
-    if (argc == 5) {
+    int shouldPrint = 0;
+    if (argc >= 5) {
         lower = atof(argv[2]); upper = atof(argv[3]); step = atof(argv[4]);
+    }
+    if (argc >= 6) {
+        shouldPrint = atoi(argv[5]);
     }
     if (lower > upper) {
         printf("Lower bound can not be greater than upper bound.\n");
         return 1;
     }
     const char** s = (const char **)&argv[1];
-    Node* root = buildTree(s, 1);
+    Node* root = buildTree(s, shouldPrint);
     if (root == NULL) {
         printf("Syntax Error at: %s\n", *s);
         return 1;
