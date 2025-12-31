@@ -108,10 +108,10 @@ void freeTree(Node *node) {
     free(node);
 }
 
-void printTree(Node* node, int level) {
+void printTree(Node* node, int level, char* prefix) {
     if (node == NULL) return;
 
-    for (int i = 0; i < level; i++) printf("    ");
+    printf("%s|-- ", prefix);
 
     switch (node->type) {
         case NODE_NUM:  printf("NUMBER: %f\n", node->value); break;
@@ -123,8 +123,10 @@ void printTree(Node* node, int level) {
         case NODE_DIV:  printf("OP: /\n"); break;
     }
 
-    printTree(node->left, level + 1);
-    printTree(node->right, level + 1);
+    char newPrefix[256];
+    sprintf(newPrefix, "%s|   ", prefix);
+    printTree(node->left, level + 1, newPrefix);
+    printTree(node->right, level + 1, newPrefix);
 }
 
 Node* buildTree(const char** s, int shouldPrint) {
@@ -133,7 +135,7 @@ Node* buildTree(const char** s, int shouldPrint) {
         freeTree(root);
         return NULL;
     }
-    if (shouldPrint != 0) printTree(root, 0);
+    if (shouldPrint != 0) printTree(root, 0, "");
     return root;
 }
 
