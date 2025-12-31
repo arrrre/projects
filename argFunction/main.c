@@ -108,6 +108,35 @@ void freeTree(Node *node) {
     free(node);
 }
 
+void printTree(Node* node, int level) {
+    if (node == NULL) return;
+
+    for (int i = 0; i < level; i++) printf("    ");
+
+    switch (node->type) {
+        case NODE_NUM:  printf("NUMBER: %f\n", node->value); break;
+        case NODE_VAR:  printf("VARIABLE: x\n"); break;
+        case NODE_FUNC: printf("FUNCTION: %s\n", node->funcName); break;
+        case NODE_ADD:  printf("OP: +\n"); break;
+        case NODE_SUB:  printf("OP: -\n"); break;
+        case NODE_MUL:  printf("OP: *\n"); break;
+        case NODE_DIV:  printf("OP: /\n"); break;
+    }
+
+    printTree(node->left, level + 1);
+    printTree(node->right, level + 1);
+}
+
+Node* buildTree(const char** s, int shouldPrint) {
+    Node* root = parseExpression(s);
+    if (**s != '\0') {
+        freeTree(root);
+        return NULL;
+    }
+    if (shouldPrint != 0) printTree(root, 0);
+    return root;
+}
+
 double evaluate(Node *node, const double x) {
     if (node == NULL) return 0;
     if (node->type == NODE_NUM) return node->value;
@@ -148,11 +177,10 @@ int main(int argc, char** argv) {
         printf("Lower bound can not be greater than upper bound.\n");
         return 1;
     }
-    const char **s = (const char **)&argv[1];
-    Node *root = parseExpression(s);
-    if (**s != '\0') {
+    const char** s = (const char **)&argv[1];
+    Node* root = buildTree(s, 1);
+    if (root == NULL) {
         printf("Syntax Error at: %s\n", *s);
-        freeTree(root);
         return 1;
     }
     float* values = getFunctionValues(root, lower, upper, step);
