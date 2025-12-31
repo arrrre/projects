@@ -146,10 +146,15 @@ int main(int argc, char** argv) {
     }
     if (lower > upper) {
         printf("Lower bound can not be greater than upper bound.\n");
-        return 0;
+        return 1;
     }
     const char **s = (const char **)&argv[1];
     Node *root = parseExpression(s);
+    if (**s != '\0') {
+        printf("Syntax Error at: %s\n", *s);
+        freeTree(root);
+        return 1;
+    }
     float* values = getFunctionValues(root, lower, upper, step);
     for (int i = 0; i < (upper - lower) / step; i++) printf("%.2f ", values[i]);
     printf("\n");
