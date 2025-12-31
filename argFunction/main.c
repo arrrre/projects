@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
     const char **s = (const char **)&argv[1];
     Node *root = parseExpression(s);
     float* values = getFunctionValues(root, lower, upper, step);
-    for (int i = 0; i < (upper - lower) / step; i++) printf("%f ", values[i]);
+    for (int i = 0; i < (upper - lower) / step; i++) printf("%.2f ", values[i]);
     printf("\n");
     free(values);
     freeTree(root);
