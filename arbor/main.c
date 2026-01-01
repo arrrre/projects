@@ -1,8 +1,41 @@
+// Compile with: gcc -Wall -Wextra -Wpedantic -o main main.c
+
 #include <ctype.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+typedef double (*MathFunc)(double);
+
+typedef struct {
+    const char* name;
+    MathFunc func;
+} FunctionEntry;
+
+FunctionEntry funcTable[] = {
+    {"sin", sin},
+    {"cos", cos},
+    {"tan", tan},
+    {"exp", exp},
+    {"log", log},
+    {"sqrt", sqrt},
+    {"abs", fabs}
+};
+
+const int numFuncs = sizeof(funcTable) / sizeof(FunctionEntry);
+
+typedef struct {
+    const char* name;
+    double value;
+} ConstantEntry;
+
+ConstantEntry constantTable[] = {
+    {"pi", 3.1415},
+    {"e", 2.718},
+};
+
+const int numConstants = sizeof(constantTable) / sizeof(ConstantEntry);
 
 typedef enum {
     NODE_ADD,
@@ -21,9 +54,6 @@ typedef struct Node {
     char funcName[10];
     struct Node *left, *right;
 } Node;
-
-const char* supportedFuncs[] = { "sin", "cos", "tan", "exp", "log", "sqrt", "abs" };
-const int numFuncs = sizeof(supportedFuncs) / sizeof(char*);
 
 Node* createNode(NodeType type) {
     Node* node = (Node*)malloc(sizeof(Node));
@@ -66,7 +96,7 @@ Node* parseFactor(const char** s) {
         }
 
         for (int i = 0; i < numFuncs; i++) {
-            if (strcmp(buffer, supportedFuncs[i]) == 0) {
+            if (strcmp(buffer, funcTable[i].name) == 0) {
                 Node* node = createNode(NODE_FUNC);
                 strcpy(node->funcName, buffer);
                 node->left = parseFactor(s);
@@ -162,26 +192,29 @@ Node* buildTree(const char** s, int shouldPrint) {
     return root;
 }
 
-double evaluate(Node *node, const double x) {
-    if (node == NULL) return 0;
-    if (node->type == NODE_NUM) return node->value;
-    if (node->type == NODE_VAR) return x;
-    double left = evaluate(node->left, x), right = evaluate(node->right, x);
-    if (node->type == NODE_ADD) return left + right;
-    if (node->type == NODE_SUB) return left - right;
-    if (node->type == NODE_MUL) return left * right;
-    if (node->type == NODE_DIV) return left / right;
-    if (node->type == NODE_POW) return pow(left, right);
-    if (node->type == NODE_FUNC) {
-        if (strcmp(node->funcName, "sin") == 0) return sin(left);
-        if (strcmp(node->funcName, "cos") == 0) return cos(left);
-        if (strcmp(node->funcName, "tan") == 0) return tan(left);
-        if (strcmp(node->funcName, "exp") == 0) return exp(left);
-        if (strcmp(node->funcName, "log") == 0) return log(left);
-        if (strcmp(node->funcName, "sqrt") == 0) return sqrt(left);
-        if (strcmp(node->funcName, "abs") == 0) return fabs(left);
+double callMathFunc(Node* node, double value) {
+    for (int i = 0; i < numFuncs; i++) {
+        if (strcmp(node->funcName, funcTable[i].name) == 0) {
+            return funcTable[i].func(value);
+        }
     }
     return 0;
+}
+
+double evaluate(Node *node, const double x) {
+    if (node == NULL) return 0;
+    double left = evaluate(node->left, x), right = evaluate(node->right, x);
+    switch(node->type) {
+        case NODE_NUM: return node->value;
+        case NODE_VAR: return x;
+        case NODE_ADD: return left + right;
+        case NODE_SUB: return left - right;
+        case NODE_MUL: return left * right;
+        case NODE_DIV: return left / right;
+        case NODE_POW: return pow(left, right);
+        case NODE_FUNC: return callMathFunc(node, left);
+        default: return 0;
+    }
 }
 
 float* getFunctionValues(Node *node, const float lower, const float upper, const float step) {
