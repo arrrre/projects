@@ -9,6 +9,7 @@ typedef enum {
     NODE_SUB,
     NODE_MUL,
     NODE_DIV,
+    NODE_POW,
     NODE_NUM,
     NODE_VAR,
     NODE_FUNC
@@ -71,15 +72,28 @@ Node* parseFactor(const char** s) {
     return NULL;
 }
 
-Node* parseTerm(const char** s) {
+Node* parsePower(const char** s) {
     Node* left = parseFactor(s);
+    skipSpaces(s);
+    if (**s == '^') {
+        (*s)++;
+        Node* node = createNode(NODE_POW);
+        node->left = left;
+        node->right = parsePower(s); 
+        return node;
+    }
+    return left;
+}
+
+Node* parseTerm(const char** s) {
+    Node* left = parsePower(s);
     skipSpaces(s);
     while (**s == '*' || **s == '/') {
         char op = **s;
         (*s)++;
         Node* node = createNode(op == '*' ? NODE_MUL : NODE_DIV);
         node->left = left;
-        node->right = parseFactor(s);
+        node->right = parsePower(s);
         left = node;
         skipSpaces(s);
     }
@@ -118,6 +132,7 @@ void printTree(Node* node, int level, char* prefix) {
         case NODE_SUB:  printf("OP: -\n"); break;
         case NODE_MUL:  printf("OP: *\n"); break;
         case NODE_DIV:  printf("OP: /\n"); break;
+        case NODE_POW:  printf("OP: ^\n"); break;
         case NODE_NUM:  printf("NUMBER: %f\n", node->value); break;
         case NODE_VAR:  printf("VARIABLE: x\n"); break;
         case NODE_FUNC: printf("FUNCTION: %s\n", node->funcName); break;
@@ -148,6 +163,7 @@ double evaluate(Node *node, const double x) {
     if (node->type == NODE_SUB) return left - right;
     if (node->type == NODE_MUL) return left * right;
     if (node->type == NODE_DIV) return left / right;
+    if (node->type == NODE_POW) return pow(left, right);
     if (node->type == NODE_FUNC) {
         if (strcmp(node->funcName, "sin") == 0) return sin(left);
         if (strcmp(node->funcName, "cos") == 0) return cos(left);
