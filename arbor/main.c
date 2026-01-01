@@ -6,6 +6,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+void clearScreen() {
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+}
+
 typedef double (*MathFunc)(double);
 
 typedef struct {
@@ -205,13 +213,12 @@ void printTree(Node* node, int level, char* prefix) {
     printTree(node->right, level + 1, newPrefix);
 }
 
-Node* buildTree(const char** s, int shouldPrint) {
+Node* buildTree(const char** s) {
     Node* root = parseExpression(s);
     if (**s != '\0') {
         freeTree(root);
         return NULL;
     }
-    if (shouldPrint != 0) printTree(root, 0, "");
     return root;
 }
 
@@ -241,44 +248,94 @@ double evaluate(Node *node, const double x) {
     }
 }
 
-float* getFunctionValues(Node *node, const float lower, const float upper, const float step) {
-    const int n = (upper - lower) / step;
-    float* values = (float *) malloc(n * sizeof(float));
-    float x = lower;
-    for (int i = 0; i < n; i++) {
-        values[i] = evaluate(node, x);
-        x += step;
-    }
-    return values;
+void printHelp(const float lower, const float upper, const float step) {
+    printf("\n--- ARBOR COMMANDS ---\n");
+    printf("  [expression]  : Parses and evaluates a function (e.g., sin(x*pi))\n");
+    printf("  l=[val]       : Set the lower bound of the range (current: %.2f)\n", lower);
+    printf("  u=[val]       : Set the upper bound of the range (current: %.2f)\n", upper);
+    printf("  s=[val]       : Set the step size (current: %.2f)\n", step);
+    printf("  pt            : Toggle tree visualization\n");
+    printf("  pf            : Print availabe functions\n");
+    printf("  pc            : Print available constants\n");
+    printf("  h             : Show help message\n");
+    printf("  c             : Clear screen\n");
+    printf("  q             : Quit\n");
+    printf("----------------------\n\n");
 }
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        printf("Usage: ./main function <lower> <upper> <step>\nExample: ./main '10*sin(5*x)'\nExample: ./main '10*sin(5*x)' -10 10 0.01\n");
-        return 0;
+void printFunctions() {
+    for (int i = 0; i < numFunctions; i++) {
+        printf("%s\n", functionTable[i].name);
     }
-    float lower = 0, upper = 1, step = 0.1;
-    int shouldPrint = 0;
-    if (argc >= 5) {
-        lower = atof(argv[2]); upper = atof(argv[3]); step = atof(argv[4]);
+}
+
+void printConstants() {
+    for (int i = 0; i < numConstants; i++) {
+        printf("%s = %f\n", constantTable[i].name, constantTable[i].value);
     }
-    if (argc >= 6) {
-        shouldPrint = atoi(argv[5]);
+}
+
+int main() {
+    char input[256];
+    int shouldPrintTree = 0;
+    float lower = 0, upper = 10, step = 1;
+    printHelp(lower, upper, step);
+    while (1) {
+        printf(">> ");
+        if (!fgets(input, sizeof(input), stdin)) break;
+        input[strcspn(input, "\n")] = 0;
+        if (strlen(input) == 0) continue;
+
+        if (strcmp(input, "q") == 0) break;
+        if (strcmp(input, "c") == 0) { clearScreen(); continue; }
+        if (strcmp(input, "h") == 0) { printHelp(lower, upper, step); continue; }
+        char* p;
+        if ((p = strstr(input, "l=")) != NULL) {
+            lower = atof(p + 2);
+            printf("Lower: %.2f\n", lower);
+            continue;
+        }
+        if ((p = strstr(input, "u=")) != NULL) {
+            upper = atof(p + 2);
+            printf("Upper: %.2f\n", upper);
+            continue;
+        }
+        if ((p = strstr(input, "s=")) != NULL) {
+            float newStep = atof(p + 2);
+            if (newStep <= 0) {
+                printf("Step size must be positive\n");
+                continue;
+            }
+            step = newStep;
+            printf("Step: %.2f\n", step);
+            continue;
+        }
+        if (strcmp(input, "pt") == 0) {
+            shouldPrintTree = !shouldPrintTree;
+            printf("PrintTree: %s\n", shouldPrintTree ? "ON" : "OFF");
+            continue;
+        }
+        if (strcmp(input, "pf") == 0) { printFunctions(); continue; }
+        if (strcmp(input, "pc") == 0) { printConstants(); continue; }
+
+        const char* s = input;
+        Node* root = buildTree(&s);
+
+        if (root == NULL) {
+            printf("Error: Could not build tree. Syntax error at: %s.\n", s);
+            continue;
+        }
+
+        if (shouldPrintTree) printTree(root, 0, "");
+
+        int numSteps = (int)((upper - lower) / step) + 1;
+        for (int i = 0; i < numSteps; i++) {
+            float x = lower + (i * step);
+            float result = evaluate(root, x);
+            printf("f(%.1f) = %.2f\n", x, result);
+        }
+
+        freeTree(root);
     }
-    if (lower > upper) {
-        printf("Lower bound can not be greater than upper bound.\n");
-        return 1;
-    }
-    const char** s = (const char **)&argv[1];
-    Node* root = buildTree(s, shouldPrint);
-    if (root == NULL) {
-        printf("Syntax Error at: %s\n", *s);
-        return 1;
-    }
-    float* values = getFunctionValues(root, lower, upper, step);
-    for (int i = 0; i < (upper - lower) / step; i++) printf("%.2f ", values[i]);
-    printf("\n");
-    free(values);
-    freeTree(root);
     return 0;
 }
