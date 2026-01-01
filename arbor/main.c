@@ -22,6 +22,9 @@ typedef struct Node {
     struct Node *left, *right;
 } Node;
 
+const char* supportedFuncs[] = { "sin", "cos", "tan", "exp", "log", "sqrt", "abs" };
+const int numFuncs = sizeof(supportedFuncs) / sizeof(char*);
+
 Node* createNode(NodeType type) {
     Node* node = (Node*)malloc(sizeof(Node));
     node->type = type;
@@ -49,33 +52,30 @@ Node* parseFactor(const char** s) {
         node->value = strtod(*s, (char**)s);
         return node;
     }
+
     if (isalpha(**s)) {
-        if (**s == 'x') {
-            (*s)++;
+        char buffer[16];
+        int len = 0;
+        while (isalpha(**s) && len < 15) {
+            buffer[len++] = *(*s)++;
+        }
+        buffer[len] = '\0';
+
+        if (strcmp(buffer, "x") == 0) {
             return createNode(NODE_VAR);
         }
-        Node* node = createNode(NODE_FUNC);
-        if (strncmp(*s, "sin", 3) == 0) {
-            *s += 3;
-            strcpy(node->funcName, "sin");
-            node->left = parseFactor(s);
+
+        for (int i = 0; i < numFuncs; i++) {
+            if (strcmp(buffer, supportedFuncs[i]) == 0) {
+                Node* node = createNode(NODE_FUNC);
+                strcpy(node->funcName, buffer);
+                node->left = parseFactor(s);
+                return node;
+            }
         }
-        if (strncmp(*s, "cos", 3) == 0) {
-            *s += 3;
-            strcpy(node->funcName, "cos");
-            node->left = parseFactor(s);
-        }
-        if (strncmp(*s, "exp", 1) == 0) {
-            *s += 3;
-            strcpy(node->funcName, "exp");
-            node->left = parseFactor(s);
-        }
-        if (strncmp(*s, "sqrt", 4) == 0) {
-            *s += 4;
-            strcpy(node->funcName, "sqrt");
-            node->left = parseFactor(s);
-        }
-        return node;
+
+        printf("Error: Unknown function '%s'\n", buffer);
+        return NULL;
     }
     return NULL;
 }
@@ -175,8 +175,11 @@ double evaluate(Node *node, const double x) {
     if (node->type == NODE_FUNC) {
         if (strcmp(node->funcName, "sin") == 0) return sin(left);
         if (strcmp(node->funcName, "cos") == 0) return cos(left);
+        if (strcmp(node->funcName, "tan") == 0) return tan(left);
         if (strcmp(node->funcName, "exp") == 0) return exp(left);
+        if (strcmp(node->funcName, "log") == 0) return log(left);
         if (strcmp(node->funcName, "sqrt") == 0) return sqrt(left);
+        if (strcmp(node->funcName, "abs") == 0) return fabs(left);
     }
     return 0;
 }
