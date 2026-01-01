@@ -31,8 +31,10 @@ typedef struct {
 } ConstantEntry;
 
 ConstantEntry constantTable[] = {
-    {"pi", 3.1415},
-    {"e", 2.718},
+    {"pi",      3.14159265358979323846},
+    {"e",       2.71828182845904523536},
+    {"deg2rad", 0.01745329251994329577}, // pi / 180
+    {"rad2deg", 57.2957795130823208768}, // 180 / pi
 };
 
 const int numConstants = sizeof(constantTable) / sizeof(ConstantEntry);
