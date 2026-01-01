@@ -13,7 +13,7 @@ typedef struct {
     MathFunc func;
 } FunctionEntry;
 
-FunctionEntry funcTable[] = {
+FunctionEntry functionTable[] = {
     {"sin", sin},
     {"cos", cos},
     {"tan", tan},
@@ -23,7 +23,7 @@ FunctionEntry funcTable[] = {
     {"abs", fabs}
 };
 
-const int numFuncs = sizeof(funcTable) / sizeof(FunctionEntry);
+const int numFunctions = sizeof(functionTable) / sizeof(FunctionEntry);
 
 typedef struct {
     const char* name;
@@ -85,20 +85,16 @@ Node* parseFactor(const char** s) {
         return node;
     }
 
-    if (isalpha(**s)) {
+    if (isalpha(**s) || **s == '_') {
         char buffer[16];
         int len = 0;
-        while (isalpha(**s) && len < 15) {
-            buffer[len++] = *(*s)++;
-        }
+        while ((isalnum(**s) || **s == '_') && len < 31) buffer[len++] = *(*s)++;
         buffer[len] = '\0';
 
-        if (strcmp(buffer, "x") == 0) {
-            return createNode(NODE_VAR);
-        }
+        if (strcmp(buffer, "x") == 0) return createNode(NODE_VAR);
 
-        for (int i = 0; i < numFuncs; i++) {
-            if (strcmp(buffer, funcTable[i].name) == 0) {
+        for (int i = 0; i < numFunctions; i++) {
+            if (strcmp(buffer, functionTable[i].name) == 0) {
                 Node* node = createNode(NODE_FUNC);
                 strcpy(node->funcName, buffer);
                 node->left = parseFactor(s);
@@ -106,7 +102,15 @@ Node* parseFactor(const char** s) {
             }
         }
 
-        printf("Error: Unknown function '%s'\n", buffer);
+        for (int i = 0; i < numConstants; i++) {
+            if (strcmp(buffer, constantTable[i].name) == 0) {
+                Node* node = createNode(NODE_NUM);
+                node->value = constantTable[i].value;
+                return node;
+            }
+        }
+
+        printf("Error: Unknown function or constant '%s'\n", buffer);
         return NULL;
     }
     return NULL;
@@ -195,9 +199,9 @@ Node* buildTree(const char** s, int shouldPrint) {
 }
 
 double callMathFunc(Node* node, double value) {
-    for (int i = 0; i < numFuncs; i++) {
-        if (strcmp(node->funcName, funcTable[i].name) == 0) {
-            return funcTable[i].func(value);
+    for (int i = 0; i < numFunctions; i++) {
+        if (strcmp(node->funcName, functionTable[i].name) == 0) {
+            return functionTable[i].func(value);
         }
     }
     return 0;
