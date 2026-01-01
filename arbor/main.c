@@ -78,6 +78,7 @@ void skipSpaces(const char** s) {
     while (**s == ' ') (*s)++;
 }
 
+double evaluate(Node* node, const double x);
 Node* parseExpression(const char** s);
 
 Node* parseFactor(const char** s) {
@@ -213,12 +214,40 @@ void printTree(Node* node, int level, char* prefix) {
     printTree(node->right, level + 1, newPrefix);
 }
 
+Node* foldConstants(Node* node) {
+    if (node == NULL) return NULL;
+    node->left = foldConstants(node->left);
+    node->right = foldConstants(node->right);
+
+    if (node->type == NODE_FUNC && node->left->type == NODE_NUM) {
+        double val = evaluate(node, 0);
+        freeTree(node->left);
+        node->type = NODE_NUM;
+        node->value = val;
+        node->left = NULL;
+    }
+
+    if (node->left && node->left->type == NODE_NUM && 
+        node->right && node->right->type == NODE_NUM) {
+        double val = evaluate(node, 0);
+        freeTree(node->left);
+        freeTree(node->right);
+        node->type = NODE_NUM;
+        node->value = val;
+        node->left = NULL;
+        node->right = NULL;
+    }
+
+    return node;
+}
+
 Node* buildTree(const char** s) {
     Node* root = parseExpression(s);
     if (**s != '\0') {
         freeTree(root);
         return NULL;
     }
+    root = foldConstants(root);
     return root;
 }
 
