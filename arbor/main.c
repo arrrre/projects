@@ -50,24 +50,32 @@ Node* parseFactor(const char** s) {
         return node;
     }
     if (isalpha(**s)) {
-        if (strncmp(*s, "sin", 3) == 0) {
-            *s += 3;
-            Node* node = createNode(NODE_FUNC);
-            strcpy(node->funcName, "sin");
-            node->left = parseFactor(s);
-            return node;
-        }
-        if (strncmp(*s, "cos", 3) == 0) {
-            *s += 3;
-            Node* node = createNode(NODE_FUNC);
-            strcpy(node->funcName, "cos");
-            node->left = parseFactor(s);
-            return node;
-        }
         if (**s == 'x') {
             (*s)++;
             return createNode(NODE_VAR);
         }
+        Node* node = createNode(NODE_FUNC);
+        if (strncmp(*s, "sin", 3) == 0) {
+            *s += 3;
+            strcpy(node->funcName, "sin");
+            node->left = parseFactor(s);
+        }
+        if (strncmp(*s, "cos", 3) == 0) {
+            *s += 3;
+            strcpy(node->funcName, "cos");
+            node->left = parseFactor(s);
+        }
+        if (strncmp(*s, "exp", 1) == 0) {
+            *s += 3;
+            strcpy(node->funcName, "exp");
+            node->left = parseFactor(s);
+        }
+        if (strncmp(*s, "sqrt", 4) == 0) {
+            *s += 4;
+            strcpy(node->funcName, "sqrt");
+            node->left = parseFactor(s);
+        }
+        return node;
     }
     return NULL;
 }
@@ -167,6 +175,8 @@ double evaluate(Node *node, const double x) {
     if (node->type == NODE_FUNC) {
         if (strcmp(node->funcName, "sin") == 0) return sin(left);
         if (strcmp(node->funcName, "cos") == 0) return cos(left);
+        if (strcmp(node->funcName, "exp") == 0) return exp(left);
+        if (strcmp(node->funcName, "sqrt") == 0) return sqrt(left);
     }
     return 0;
 }
