@@ -86,7 +86,7 @@ Node* parseFactor(const char** s) {
     }
 
     if (isalpha(**s) || **s == '_') {
-        char buffer[16];
+        char buffer[32];
         int len = 0;
         while ((isalnum(**s) || **s == '_') && len < 31) buffer[len++] = *(*s)++;
         buffer[len] = '\0';
