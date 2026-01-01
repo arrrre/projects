@@ -222,6 +222,12 @@ Node* buildTree(const char** s) {
     return root;
 }
 
+int treeContainsVariables(Node* node) {
+    if (node == NULL) return 0;
+    if (node->type == NODE_VAR) return 1;
+    return treeContainsVariables(node->left) || treeContainsVariables(node->right);
+}
+
 double callMathFunc(Node* node, double value) {
     for (int i = 0; i < numFunctions; i++) {
         if (strcmp(node->funcName, functionTable[i].name) == 0) {
@@ -328,11 +334,16 @@ int main() {
 
         if (shouldPrintTree) printTree(root, 0, "");
 
-        int numSteps = (int)((upper - lower) / step) + 1;
-        for (int i = 0; i < numSteps; i++) {
-            float x = lower + (i * step);
-            float result = evaluate(root, x);
-            printf("f(%.1f) = %.2f\n", x, result);
+        if (treeContainsVariables(root) == 0) {
+            printf("%.4f\n", evaluate(root, 0));
+        } else {
+            printf("Evaluating from %.2f to %.2f (step %.2f):\n", lower, upper, step);
+            int numSteps = (int)((upper - lower) / step) + 1;
+            for (int i = 0; i < numSteps; i++) {
+                float x = lower + (i * step);
+                float result = evaluate(root, x);
+                printf("f(%.2f) = %.4f\n", x, result);
+            }
         }
 
         freeTree(root);
