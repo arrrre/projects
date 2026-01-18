@@ -237,7 +237,7 @@ void editorInsertChar(struct editorConfig* ec, int c) {
     ec->cx++;
 }
 
-void editorDelChar(struct editorConfig* ec) {
+void editorBackspaceChar(struct editorConfig* ec) {
     if (ec->cy == 0 && ec->cx == 0) return;
     if (ec->cy >= ec->numlines) return;
     if (ec->cx > 0) {
@@ -279,6 +279,11 @@ void editorDelChar(struct editorConfig* ec) {
         
         ec->numlines--;
     }
+}
+
+void editorDeleteChar(struct editorConfig* ec) {
+    printf("DELETE\n");
+    exit(0);
 }
 
 void editorInsertNewline(struct editorConfig* ec) {
@@ -341,7 +346,10 @@ int main(int argc, char *argv[]) {
                 editorMoveCursor(&ec, key_pressed);
                 break;
             case BACKSPACE:
-                editorDelChar(&ec);
+                editorBackspaceChar(&ec);
+                break;
+            case DEL:
+                editorDeleteChar(&ec);
                 break;
             case ENTER:
                 editorInsertNewline(&ec);
