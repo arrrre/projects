@@ -86,15 +86,16 @@ int editorReadKey() {
 
 void editorRefreshScreen(struct editorConfig* ec) {
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    printf("\x1b[2J");
-    printf("\x1b[H");
+    
+    // \x1b[2J clears the screen, \x1b[3J clears the scrollback buffer
+    // \x1b[H moves cursor to 1,1
+    printf("\x1b[2J\x1b[3J\x1b[H");
 
     for (int i = 0; i < ec->numlines; i++) {
-        printf("%s", ec->filelines[i]);
-        printf("\r\n"); 
+        printf("%s\r\n", ec->filelines[i]);
     }
 
-    COORD final_pos = {ec->cx, ec->cy};
+    COORD final_pos = {(SHORT)ec->cx, (SHORT)ec->cy};
     SetConsoleCursorPosition(hConsole, final_pos);
 }
 
@@ -275,29 +276,27 @@ void editorInsertNewline(struct editorConfig* ec) {
         char *current_line = ec->filelines[ec->cy];
         size_t current_len = strlen(current_line);
         
-        // --- A. Create the new line (text *after* the cursor) ---
         // Duplicate the portion of the string starting at ec->cx
         // strdup will allocate memory for the new line
         char *new_line_text = strdup(&current_line[ec->cx]);
 
-        // --- B. Truncate the current line (text *before* the cursor) ---
         // The current line ends where the new line begins, plus the null terminator.
         // Reallocate to save memory and ensure correct string termination.
         ec->filelines[ec->cy] = realloc(current_line, ec->cx + 1);
         ec->filelines[ec->cy][ec->cx] = '\0'; // Manually null-terminate the truncated line
-        
-        // --- C. Make room in the filelines array for the new line ---
-        // Resize the array of char* pointers to hold one more linec->
+
+        // Resize array
         ec->filelines = realloc(ec->filelines, sizeof(char *) * (ec->numlines + 1));
         
-        // Shift all line pointers *after* the current line one position down
-        // The shift starts at ec->cy + 1 and moves ec->numlines - ec->cy pointers.
-        memmove(&ec->filelines[ec->cy + 2], &ec->filelines[ec->cy + 1], 
-            sizeof(char *) * (ec->numlines - ec->cy));
+        // Shift lines down by 1 to make room at cy + 1
+        // We move (TotalLines - (CurrentLine + 1)) elements
+        int num_elements_to_move = ec->numlines - (ec->cy + 1);
+        if (num_elements_to_move > 0) {
+            memmove(&ec->filelines[ec->cy + 2], &ec->filelines[ec->cy + 1], 
+                    sizeof(char *) * num_elements_to_move);
+        }
             
-        // --- D. Insert the new line pointer ---
         ec->filelines[ec->cy + 1] = new_line_text;
-        printf("\n\n%s\n%s\n", ec->filelines[ec->cy], ec->filelines[ec->cy + 1]);
         ec->numlines++;
     }
 
@@ -333,15 +332,17 @@ int main(int argc, char *argv[]) {
                 break;
             case ENTER:
                 editorInsertNewline(&ec);
-                exit(0);
                 break;
             case CTRL_S:
                 editorSave(&ec, filename);
                 break;
             case CTRL_Q:
                 running = 0;
+                break;
             default:
-                if (key_pressed != 0) editorInsertChar(&ec, key_pressed);
+                if (key_pressed < 1000 && isprint(key_pressed)) {
+                    editorInsertChar(&ec, key_pressed);
+                }
                 break;
         }
     }
@@ -349,7 +350,6 @@ int main(int argc, char *argv[]) {
     editorMoveCursorBack(&ec);
     disableRawMode();
 
-    // Clean up memory before exit
     for (int i = 0; i < ec.numlines; i++) {
         free(ec.filelines[i]);
     }
