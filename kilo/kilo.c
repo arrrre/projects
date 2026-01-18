@@ -5,13 +5,8 @@
 #include <windows.h>
 #include <errno.h>
 
-#define KILO_VERSION "0.0.1"
-#define ABUF_INIT {NULL, 0}
-
 HANDLE hStdin = INVALID_HANDLE_VALUE;
 DWORD dwOriginalMode = 0;
-int editor_cx = 0; // Current cursor X (column)
-int editor_cy = 0; // Current cursor Y (row)
 
 struct editorConfig {
     int cx, cy;       // Cursor position (col, row)
@@ -145,56 +140,53 @@ void editorAppendRow(struct editorConfig* ec, char *s) {
 
 void editorOpen(struct editorConfig* ec, const char *filename) {
     FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        perror("fopen");
-        return;
-    }
+    if (!fp) return;
 
-    char *line = NULL;
-    size_t linecap = 0;
-    ssize_t linelen;
-
-    char buffer[256];
+    char buffer[1024];
+    int fileEndsWithNewline = 0;
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        // Remove the trailing newline character, if present
         size_t len = strlen(buffer);
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
+        while (len > 0 && (buffer[len-1] == '\n' || buffer[len-1] == '\r')) {
+            fileEndsWithNewline = buffer[len-1] == '\n' ? 1 : 0;
+            len--;
+            buffer[len] = '\0';
         }
         editorAppendRow(ec, buffer);
+    }
+    
+    if (fileEndsWithNewline) {
+        editorAppendRow(ec, "");
     }
 
     fclose(fp);
 }
 
 char *editorRowsToString(struct editorConfig* ec, int *buflen) {
-    // 1. Calculate the total size needed for the entire file content
     int total_len = 0;
     for (int i = 0; i < ec->numlines; i++) {
-        // Line length + 1 for the newline character (\n)
-        total_len += strlen(ec->filelines[i]) + 1; 
+        total_len += strlen(ec->filelines[i]);
+        if (i < ec->numlines - 1) total_len++;
     }
-    *buflen = total_len;
-
-    // 2. Allocate one large buffer to hold the entire file
-    char *buf = malloc(total_len);
-    if (buf == NULL) return NULL; // Handle allocation failure
-
-    char *p = buf; // Pointer to track current position in the buffer
     
-    // 3. Copy each line into the buffer, adding a newline
+    if (total_len == 0) {
+        *buflen = 0;
+        return NULL;
+    }
+
+    char *buf = malloc(total_len);
+    char *p = buf;
+
     for (int i = 0; i < ec->numlines; i++) {
         size_t len = strlen(ec->filelines[i]);
-        
-        // Copy the line content
         memcpy(p, ec->filelines[i], len);
         p += len;
-        
-        // Add the newline character
-        *p = '\n';
-        p++;
+        if (i < ec->numlines - 1) {
+            *p = '\n';
+            p++;
+        }
     }
 
+    *buflen = total_len;
     return buf;
 }
 
@@ -257,14 +249,35 @@ void editorDelChar(struct editorConfig* ec) {
     } else {
         // Case 2: Cursor is at the start of a line (ec->cx == 0) -> Join with the previous line
         
-        // This is complex and involves:
-        // a) Getting the previous line's length.
-        // b) Appending the current line's text to the previous linec->
-        // c) Deleting the current line from the filelines array.
-        // d) Moving the cursor to the point of the join.
+        // 1. Get pointers to the previous line and the current line
+        char *prev_line = ec->filelines[ec->cy - 1];
+        char *curr_line = ec->filelines[ec->cy];
+        size_t prev_len = strlen(prev_line);
+        size_t curr_len = strlen(curr_line);
+
+        // 2. Reallocate the previous line to hold both lines + null terminator
+        prev_line = realloc(prev_line, prev_len + curr_len + 1);
+        ec->filelines[ec->cy - 1] = prev_line;
+
+        // 3. Copy current line content to the end of the previous line
+        memcpy(&prev_line[prev_len], curr_line, curr_len + 1);
+
+        // 4. Update cursor position: it goes to the end of the "old" previous line
+        ec->cx = (int)prev_len;
+        ec->cy--;
+
+        // 5. Delete the current line pointer from the array
+        // First, free the memory of the line we just merged
+        free(curr_line);
         
-        // **For simplicity, let's skip line joining for the initial version.**
-        // Just prevent backspace if ec->cx == 0 for now.
+        // Shift all subsequent line pointers up by one
+        int lines_to_move = ec->numlines - (ec->cy + 2);
+        if (lines_to_move > 0) {
+            memmove(&ec->filelines[ec->cy + 1], &ec->filelines[ec->cy + 2], 
+                    sizeof(char *) * lines_to_move);
+        }
+        
+        ec->numlines--;
     }
 }
 
