@@ -48,8 +48,9 @@ void disableRawMode() {
 }
 
 void editorMoveCursorBack(struct editorConfig* ec) {
+    if (ec->numlines == 0) return; // Safety check
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD pos = {ec->rows[ec->numlines - 1].size, ec->numlines - 1};
+    COORD pos = {(SHORT)ec->rows[ec->numlines - 1].size, (SHORT)ec->numlines - 1};
     SetConsoleCursorPosition(hConsole, pos);
 }
 
@@ -149,8 +150,8 @@ void editorInsertRow(struct editorConfig *ec, int at, char *s, size_t len) {
     }
 
     ec->rows[at].size = (int)len;
-    ec->rows[at].rsize = (int)len + 1;
-    ec->rows[at].chars = malloc(len + 1);
+    ec->rows[at].rsize = (int)len + 16;
+    ec->rows[at].chars = malloc(ec->rows[at].rsize);
     memcpy(ec->rows[at].chars, s, len);
     ec->rows[at].chars[len] = '\0';
     
@@ -300,6 +301,7 @@ void editorBackspaceChar(struct editorConfig *ec) {
         // 1. Expand the previous row's memory to fit the current row
         int new_size = prev_row->size + row->size;
         prev_row->chars = realloc(prev_row->chars, new_size + 1);
+        prev_row->rsize = new_size + 1;
         
         // 2. Copy current row data to the end of previous row
         memcpy(&prev_row->chars[prev_row->size], row->chars, row->size);
@@ -330,6 +332,7 @@ void editorDeleteChar(struct editorConfig *ec) {
         // 1. Expand current row's memory to fit next_row
         int new_size = row->size + next_row->size;
         row->chars = realloc(row->chars, new_size + 1);
+        row->rsize = new_size + 1;
 
         // 2. Copy next_row data to the end of current row
         memcpy(&row->chars[row->size], next_row->chars, next_row->size);
