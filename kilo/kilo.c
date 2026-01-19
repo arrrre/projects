@@ -53,16 +53,16 @@ void disableRawMode() {
     }
 }
 
+void editorClearScreenOnExit() {
+    printf("\x1b[2J\x1b[H");
+    fflush(stdout); 
+}
+
 void updateWindowSize(struct editorConfig *ec) {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
     ec->screenrows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
     ec->screencols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-}
-
-void editorClearScreenOnExit() {
-    printf("\x1b[2J\x1b[H");
-    fflush(stdout); 
 }
 
 enum editorKey {
@@ -158,18 +158,6 @@ void editorRefreshScreen(struct editorConfig* ec) {
     SetConsoleCursorPosition(hConsole, final_pos);
     printf("\x1b[?25h"); 
 }
-
-// void editorRefreshScreen(struct editorConfig* ec) {
-//     printf("\x1b[2J\x1b[3J\x1b[H");
-
-//     for (int i = 0; i < ec->numlines; i++) {
-//         printf("%.*s\r\n", ec->rows[i].size, ec->rows[i].chars);
-//     }
-
-//     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-//     COORD final_pos = {(SHORT)ec->cx, (SHORT)ec->cy};
-//     SetConsoleCursorPosition(hConsole, final_pos);
-// }
 
 void editorMoveCursor(struct editorConfig *ec, int key) {
     // Get the current row if it exists
