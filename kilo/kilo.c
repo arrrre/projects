@@ -246,9 +246,7 @@ void editorBackspaceChar(struct editorConfig* ec) {
         memmove(&line[ec->cx - 1], &line[ec->cx], len - ec->cx + 1);
         ec->filelines[ec->cy] = realloc(line, len);
         ec->cx--;
-    } else {
-        // Case 2: Cursor is at the start of a line (ec->cx == 0) -> Join with the previous line
-        
+    } else {        
         // 1. Get pointers to the previous line and the current line
         char *prev_line = ec->filelines[ec->cy - 1];
         char *curr_line = ec->filelines[ec->cy];
@@ -266,8 +264,6 @@ void editorBackspaceChar(struct editorConfig* ec) {
         ec->cx = (int)prev_len;
         ec->cy--;
 
-        // 5. Delete the current line pointer from the array
-        // First, free the memory of the line we just merged
         free(curr_line);
         
         // Shift all subsequent line pointers up by one
@@ -281,9 +277,39 @@ void editorBackspaceChar(struct editorConfig* ec) {
     }
 }
 
-void editorDeleteChar(struct editorConfig* ec) {
-    printf("DELETE\n");
-    exit(0);
+void editorDeleteChar(struct editorConfig *ec) {
+    if (ec->cy >= ec->numlines) return;
+
+    char *line = ec->filelines[ec->cy];
+    size_t len = strlen(line);
+
+    if (ec->cx < (int)len) {
+        memmove(&line[ec->cx], &line[ec->cx + 1], len - ec->cx);
+        ec->filelines[ec->cy] = realloc(line, len);
+    } else {
+        if (ec->cy == ec->numlines - 1) return;
+
+        char *next_line = ec->filelines[ec->cy + 1];
+        size_t next_len = strlen(next_line);
+
+        // 1. Reallocate current line to hold its current content + next line + null terminator
+        line = realloc(line, len + next_len + 1);
+        ec->filelines[ec->cy] = line;
+
+        // 2. Append the next line's content to the current line
+        memcpy(&line[len], next_line, next_len + 1);
+
+        free(next_line);
+        
+        // Shift all subsequent line pointers up by one
+        int lines_to_move = ec->numlines - (ec->cy + 2);
+        if (lines_to_move > 0) {
+            memmove(&ec->filelines[ec->cy + 1], &ec->filelines[ec->cy + 2], 
+                    sizeof(char *) * lines_to_move);
+        }
+
+        ec->numlines--;
+    }
 }
 
 void editorInsertNewline(struct editorConfig* ec) {
