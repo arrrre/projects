@@ -18,6 +18,7 @@ struct editorConfig {
     int cx, cy;
     int numlines;
     erow *rows;
+    int modified;
 };
 
 void enableRawMode() {
@@ -237,6 +238,7 @@ void editorSave(struct editorConfig* ec, const char *filename) {
     } else if (bytes_written != len) {
         fprintf(stderr, "Warning: Only wrote %zu of %d bytes.\n", bytes_written, len);
     } else {
+        ec->modified = 0;
         printf("[File saved successfully]\n");
     }
 
@@ -264,6 +266,7 @@ void editorInsertChar(struct editorConfig *ec, int c) {
     }
     editorRowInsertChar(&ec->rows[ec->cy], ec->cx, c);
     ec->cx++;
+    ec->modified++;
 }
 
 void editorRowDelChar(erow *row, int at) {
@@ -312,6 +315,7 @@ void editorBackspaceChar(struct editorConfig *ec) {
         editorDelRow(ec, ec->cy); // Delete the current row
         ec->cy--;                 // Move cursor up
     }
+    ec->modified++;
 }
 
 void editorDeleteChar(struct editorConfig *ec) {
@@ -342,6 +346,7 @@ void editorDeleteChar(struct editorConfig *ec) {
         // 3. Delete the next_row from the array
         editorDelRow(ec, ec->cy + 1);
     }
+    ec->modified++;
 }
 
 void editorInsertNewline(struct editorConfig *ec) {
@@ -370,6 +375,7 @@ void editorInsertNewline(struct editorConfig *ec) {
     // Move cursor to the beginning of the new line
     ec->cy++;
     ec->cx = 0;
+    ec->modified++;
 }
 
 int main(int argc, char *argv[]) {
@@ -407,7 +413,25 @@ int main(int argc, char *argv[]) {
                 editorSave(&ec, filename);
                 break;
             case CTRL_Q:
-                running = 0;
+                if (ec.modified > 0) {
+                    printf("\r\nFile has unsaved changes, save before quitting? (y/n/esc)");
+                    while(1) {
+                        int c = editorReadKey();
+                        if (c == 'y' || c == 'Y') {
+                            editorSave(&ec, filename);
+                            running = 0; // Quit after saving
+                            break;
+                        } else if (c == 'n' || c == 'N') {
+                            running = 0; // Quit without saving
+                            break;
+                        } else if (c == 27) { // ESC key
+                            // Just break out of the prompt and go back to editing
+                            break; 
+                        }
+                    }
+                } else {
+                    running = 0;
+                }
                 break;
             default:
                 if (key_pressed < 1000 && isprint(key_pressed)) {
