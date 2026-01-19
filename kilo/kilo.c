@@ -1,9 +1,11 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <conio.h>
-#include <windows.h>
 #include <errno.h>
+#include <time.h>
+#include <windows.h>
 
 HANDLE hStdin = INVALID_HANDLE_VALUE;
 DWORD dwOriginalMode = 0;
@@ -19,6 +21,9 @@ struct editorConfig {
     int numlines;
     erow *rows;
     int modified;
+    int screenrows, screencols;
+    char statusmsg[80];
+    time_t statusmsg_time;
 };
 
 void enableRawMode() {
@@ -48,11 +53,16 @@ void disableRawMode() {
     }
 }
 
-void editorMoveCursorBack(struct editorConfig* ec) {
-    if (ec->numlines == 0) return; // Safety check
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD pos = {(SHORT)ec->rows[ec->numlines - 1].size, (SHORT)ec->numlines - 1};
-    SetConsoleCursorPosition(hConsole, pos);
+void updateWindowSize(struct editorConfig *ec) {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+    ec->screenrows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    ec->screencols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+}
+
+void editorClearScreenOnExit() {
+    printf("\x1b[2J\x1b[H");
+    fflush(stdout); 
 }
 
 enum editorKey {
@@ -63,6 +73,7 @@ enum editorKey {
     HOME,
     END,
     DEL,
+    ESC,
     BACKSPACE = 8,
     ENTER = 13,
     CTRL_S = 19,
@@ -82,22 +93,83 @@ int editorReadKey() {
             case 71: return HOME;
             case 79: return END;
             case 83: return DEL;
+            case 27: return ESC;
         }
     }
     return c;
 }
 
-void editorRefreshScreen(struct editorConfig* ec) {
-    printf("\x1b[2J\x1b[3J\x1b[H");
+void editorSetStatusMessage(struct editorConfig *ec, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(ec->statusmsg, sizeof(ec->statusmsg), fmt, ap);
+    va_end(ap);
+    ec->statusmsg_time = time(NULL);
+}
 
-    for (int i = 0; i < ec->numlines; i++) {
-        printf("%.*s\r\n", ec->rows[i].size, ec->rows[i].chars);
+void editorRefreshScreen(struct editorConfig* ec) {
+    updateWindowSize(ec);
+    printf("\x1b[?25l"); // Hide cursor during redraw to prevent flickering
+    printf("\x1b[H");    // Move to 1,1
+
+    // We leave 2 rows at the bottom for status and message
+    for (int y = 0; y < ec->screenrows - 2; y++) {
+        if (y < ec->numlines) {
+            // Draw actual file content
+            int len = ec->rows[y].size;
+            if (len > ec->screencols) len = ec->screencols;
+            printf("%.*s", len, ec->rows[y].chars);
+        } else {
+            // Draw filler for empty space
+            printf("~");
+        }
+        printf("\x1b[K\r\n"); // Clear to end of line and move to next
     }
 
+    // --- Draw Status Bar ---
+    printf("\x1b[7m");
+    char status[120], rstatus[120];
+    int len = snprintf(status, sizeof(status), " %.20s - %d lines %s",
+                       "my_file.txt", ec->numlines, ec->modified ? "(modified)" : "");
+    int rlen = snprintf(rstatus, sizeof(rstatus), "Row %d, Col %d ", ec->cy + 1, ec->cx + 1);
+    
+    if (len > ec->screencols) len = ec->screencols;
+    printf("%.*s", len, status);
+    while (len < ec->screencols) {
+        if (ec->screencols - len == rlen) {
+            printf("%s", rstatus);
+            break;
+        } else {
+            printf(" ");
+            len++;
+        }
+    }
+    printf("\x1b[m\r\n");
+
+    // --- Draw Message Bar ---
+    if (time(NULL) - ec->statusmsg_time < 5) {
+        printf("%.*s", ec->screencols, ec->statusmsg);
+    }
+    printf("\x1b[K"); 
+
+    // Move cursor and show it again
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     COORD final_pos = {(SHORT)ec->cx, (SHORT)ec->cy};
     SetConsoleCursorPosition(hConsole, final_pos);
+    printf("\x1b[?25h"); 
 }
+
+// void editorRefreshScreen(struct editorConfig* ec) {
+//     printf("\x1b[2J\x1b[3J\x1b[H");
+
+//     for (int i = 0; i < ec->numlines; i++) {
+//         printf("%.*s\r\n", ec->rows[i].size, ec->rows[i].chars);
+//     }
+
+//     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+//     COORD final_pos = {(SHORT)ec->cx, (SHORT)ec->cy};
+//     SetConsoleCursorPosition(hConsole, final_pos);
+// }
 
 void editorMoveCursor(struct editorConfig *ec, int key) {
     // Get the current row if it exists
@@ -379,7 +451,7 @@ void editorInsertNewline(struct editorConfig *ec) {
 }
 
 int main(int argc, char *argv[]) {
-    struct editorConfig ec = {0, 0, 0, NULL};
+    struct editorConfig ec = {0, 0, 0, NULL, 0, 0};
 
     const char *filename = (argc >= 2) ? argv[1] : "new_file.txt";
     if (argc >= 2) editorOpen(&ec, filename);
@@ -414,19 +486,20 @@ int main(int argc, char *argv[]) {
                 break;
             case CTRL_Q:
                 if (ec.modified > 0) {
-                    printf("\r\nFile has unsaved changes, save before quitting? (y/n/esc)");
-                    while(1) {
+                    editorSetStatusMessage(&ec, "Unsaved changes! Save? (y/n/esc)");
+                    editorRefreshScreen(&ec); // Force a redraw to show the question
+                    while (1) {
                         int c = editorReadKey();
                         if (c == 'y' || c == 'Y') {
                             editorSave(&ec, filename);
-                            running = 0; // Quit after saving
+                            running = 0;
                             break;
                         } else if (c == 'n' || c == 'N') {
-                            running = 0; // Quit without saving
+                            running = 0;
                             break;
-                        } else if (c == 27) { // ESC key
-                            // Just break out of the prompt and go back to editing
-                            break; 
+                        } else if (c == 27) {
+                            editorSetStatusMessage(&ec, ""); // Clear the warning
+                            break;
                         }
                     }
                 } else {
@@ -441,7 +514,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    editorMoveCursorBack(&ec);
+    editorClearScreenOnExit();
     disableRawMode();
 
     for (int i = 0; i < ec.numlines; i++) {
