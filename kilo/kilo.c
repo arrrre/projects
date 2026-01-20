@@ -13,15 +13,15 @@ DWORD dwOriginalMode = 0;
 typedef struct erow {
     int size;          // The number of characters in the row
     int rsize;         // The amount of memory allocated for 'chars'
-    char* chars;       // The actual character data
+    char *chars;       // The actual character data
 } erow;
 
 struct editorConfig {
     int cx, cy;
     int numlines;
-    erow* rows;
+    erow *rows;
     int modified;
-    char* filename;
+    char *filename;
     int screenrows, screencols;
     char statusmsg[80];
     time_t statusmsg_time;
