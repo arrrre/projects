@@ -11,9 +11,9 @@ HANDLE hStdin = INVALID_HANDLE_VALUE;
 DWORD dwOriginalMode = 0;
 
 typedef struct erow {
-    int size;          // The number of characters in the row
-    int rsize;         // The amount of memory allocated for 'chars'
-    char *chars;       // The actual character data
+    int size;
+    int rsize;
+    char *chars;
 } erow;
 
 struct editorConfig {
@@ -277,25 +277,21 @@ void editorSave(struct editorConfig* ec) {
 
     FILE *fp = fopen(ec->filename, "w");
     if (fp == NULL) {
+        editorSetStatusMessage(ec, "Save failed: Could not open file.");
         free(buf);
         return;
     }
 
     size_t bytes_written = fwrite(buf, 1, len, fp);
-
-    if (ferror(fp)) {
-        editorSetStatusMessage(ec, "Error writing to file.");
-    } else if (bytes_written != len) {
-        char msg[80];
-        snprintf(msg, sizeof(msg), "Warning: Only wrote %zu of %d bytes.", bytes_written, len);
-        editorSetStatusMessage(ec, msg);
-    } else {
-        ec->modified = 0;
-        editorSetStatusMessage(ec, "File saved successfully.");
-    }
-
     fclose(fp);
     free(buf);
+
+    if (bytes_written == len) {
+        ec->modified = 0;
+        editorSetStatusMessage(ec, "File saved successfully.");
+    } else {
+        editorSetStatusMessage(ec, "Error: Only wrote %zu of %d bytes", bytes_written, len);
+    }
 }
 
 void editorRowInsertChar(erow *row, int at, int c) {
