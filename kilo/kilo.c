@@ -99,11 +99,11 @@ int editorReadKey() {
     return c;
 }
 
-void editorSetStatusMessage(struct editorConfig *ec, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(ec->statusmsg, sizeof(ec->statusmsg), fmt, ap);
-    va_end(ap);
+void editorSetStatusMessage(struct editorConfig *ec, const char *statusmsg, ...) {
+    va_list args;
+    va_start(args, statusmsg);
+    vsnprintf(ec->statusmsg, sizeof(ec->statusmsg), statusmsg, args);
+    va_end(args);
     ec->statusmsg_time = time(NULL);
 }
 
