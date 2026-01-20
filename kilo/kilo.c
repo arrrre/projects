@@ -74,11 +74,11 @@ enum editorKey {
     HOME,
     END,
     DEL,
-    ESC,
     BACKSPACE = 8,
     ENTER = 13,
+    CTRL_Q = 17,
     CTRL_S = 19,
-    CTRL_Q = 17
+    ESC = 27
 };
 
 int editorReadKey() {
@@ -94,7 +94,6 @@ int editorReadKey() {
             case 71: return HOME;
             case 79: return END;
             case 83: return DEL;
-            case 27: return ESC;
         }
     }
     return c;
@@ -472,7 +471,7 @@ int main(int argc, char *argv[]) {
                         } else if (c == 'n' || c == 'N') {
                             running = 0;
                             break;
-                        } else if (c == 27) {
+                        } else if (c == ESC) {
                             editorSetStatusMessage(&ec, "");
                             break;
                         }
