@@ -249,10 +249,7 @@ char *editorRowsToString(struct editorConfig* ec, int *buflen) {
         if (i < ec->numlines - 1) total_len++;
     }
     
-    if (total_len == 0) {
-        *buflen = 0;
-        return NULL;
-    }
+    if (total_len == 0) return NULL;
 
     char *buf = malloc(total_len);
     char *p = buf;
@@ -272,33 +269,29 @@ char *editorRowsToString(struct editorConfig* ec, int *buflen) {
 }
 
 void editorSave(struct editorConfig* ec) {
-    if (ec->numlines == 0) return; // Nothing to save
+    if (ec->numlines == 0) return;
 
     int len;
     char *buf = editorRowsToString(ec, &len);
-    if (buf == NULL) {
-        perror("Memory allocation for save failed");
-        return;
-    }
+    if (buf == NULL) return;
 
-    // Use a temporary file handle for writing
     FILE *fp = fopen(ec->filename, "w");
     if (fp == NULL) {
-        perror("Failed to open file for writing");
         free(buf);
         return;
     }
 
-    // Write the entire buffer content to the file
     size_t bytes_written = fwrite(buf, 1, len, fp);
 
     if (ferror(fp)) {
-        perror("Error writing to file");
+        editorSetStatusMessage(ec, "Error writing to file.");
     } else if (bytes_written != len) {
-        fprintf(stderr, "Warning: Only wrote %zu of %d bytes.\n", bytes_written, len);
+        char msg[80];
+        snprintf(msg, sizeof(msg), "Warning: Only wrote %zu of %d bytes.", bytes_written, len);
+        editorSetStatusMessage(ec, msg);
     } else {
         ec->modified = 0;
-        printf("[File saved successfully]\n");
+        editorSetStatusMessage(ec, "File saved successfully.");
     }
 
     fclose(fp);
@@ -330,8 +323,6 @@ void editorInsertChar(struct editorConfig *ec, int c) {
 
 void editorRowDelChar(erow *row, int at) {
     if (at < 0 || at >= row->size) return;
-    
-    // Shift characters left to overwrite the char at 'at'
     memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
     row->size--;
 }
@@ -449,7 +440,7 @@ int main(int argc, char *argv[]) {
     int running = 1;
     while (running) {
         editorRefreshScreen(&ec);
-
+        
         int key_pressed = editorReadKey();
         switch (key_pressed) {
             case ARROW_UP:
@@ -475,7 +466,7 @@ int main(int argc, char *argv[]) {
             case CTRL_Q:
                 if (ec.modified > 0) {
                     editorSetStatusMessage(&ec, "Unsaved changes! Save? (y/n/esc)");
-                    editorRefreshScreen(&ec); // Force a redraw to show the question
+                    editorRefreshScreen(&ec);
                     while (1) {
                         int c = editorReadKey();
                         if (c == 'y' || c == 'Y') {
@@ -486,7 +477,7 @@ int main(int argc, char *argv[]) {
                             running = 0;
                             break;
                         } else if (c == 27) {
-                            editorSetStatusMessage(&ec, ""); // Clear the warning
+                            editorSetStatusMessage(&ec, "");
                             break;
                         }
                     }
