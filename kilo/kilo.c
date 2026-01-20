@@ -269,7 +269,7 @@ char *editorRowsToString(struct editorConfig* ec, int *buflen) {
 }
 
 void editorSave(struct editorConfig* ec) {
-    if (ec->numlines == 0) return;
+    if (ec->numlines == 0 || ec->modified == 0) return;
 
     int len;
     char *buf = editorRowsToString(ec, &len);
