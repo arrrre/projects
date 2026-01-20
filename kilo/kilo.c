@@ -112,21 +112,19 @@ void editorRefreshScreen(struct editorConfig* ec) {
     printf("\x1b[?25l"); // Hide cursor during redraw to prevent flickering
     printf("\x1b[H");    // Move to 1,1
 
-    // We leave 2 rows at the bottom for status and message
+    // Print Text
     for (int y = 0; y < ec->screenrows - 2; y++) {
         if (y < ec->numlines) {
-            // Draw actual file content
             int len = ec->rows[y].size;
             if (len > ec->screencols) len = ec->screencols;
             printf("%.*s", len, ec->rows[y].chars);
         } else {
-            // Draw filler for empty space
             printf("~");
         }
         printf("\x1b[K\r\n"); // Clear to end of line and move to next
     }
 
-    // --- Draw Status Bar ---
+    // Draw Status Bar
     printf("\x1b[7m");
     char status[120], rstatus[120];
     int len = snprintf(status, sizeof(status), " %.20s - %d lines %s",
@@ -146,7 +144,7 @@ void editorRefreshScreen(struct editorConfig* ec) {
     }
     printf("\x1b[m\r\n");
 
-    // --- Draw Message Bar ---
+    // Draw Message Bar
     if (time(NULL) - ec->statusmsg_time < 5) {
         printf("%.*s", ec->screencols, ec->statusmsg);
     }
@@ -210,12 +208,12 @@ void editorInsertRow(struct editorConfig *ec, int at, char *s, size_t len) {
         memmove(&ec->rows[at + 1], &ec->rows[at], sizeof(erow) * (ec->numlines - at));
     }
 
-    ec->rows[at].size = (int)len;
-    ec->rows[at].rsize = (int)len + 16;
-    ec->rows[at].chars = malloc(ec->rows[at].rsize);
-    memcpy(ec->rows[at].chars, s, len);
-    ec->rows[at].chars[len] = '\0';
-    
+    erow *row = &ec->rows[at];
+    row->size = (int)len;
+    row->rsize = (int)len + 16;
+    row->chars = malloc(row->rsize);
+    memcpy(row->chars, s, len);
+    row->chars[len] = '\0';
     ec->numlines++;
 }
 
