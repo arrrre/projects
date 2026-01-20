@@ -13,14 +13,15 @@ DWORD dwOriginalMode = 0;
 typedef struct erow {
     int size;          // The number of characters in the row
     int rsize;         // The amount of memory allocated for 'chars'
-    char *chars;       // The actual character data
+    char* chars;       // The actual character data
 } erow;
 
 struct editorConfig {
     int cx, cy;
     int numlines;
-    erow *rows;
+    erow* rows;
     int modified;
+    char* filename;
     int screenrows, screencols;
     char statusmsg[80];
     time_t statusmsg_time;
@@ -130,7 +131,7 @@ void editorRefreshScreen(struct editorConfig* ec) {
     printf("\x1b[7m");
     char status[120], rstatus[120];
     int len = snprintf(status, sizeof(status), " %.20s - %d lines %s",
-                       "my_file.txt", ec->numlines, ec->modified ? "(modified)" : "");
+                       ec->filename, ec->numlines, ec->modified ? "(modified)" : "");
     int rlen = snprintf(rstatus, sizeof(rstatus), "Row %d, Col %d ", ec->cy + 1, ec->cx + 1);
     
     if (len > ec->screencols) len = ec->screencols;
@@ -219,8 +220,8 @@ void editorInsertRow(struct editorConfig *ec, int at, char *s, size_t len) {
     ec->numlines++;
 }
 
-void editorOpen(struct editorConfig *ec, const char *filename) {
-    FILE *fp = fopen(filename, "r");
+void editorOpen(struct editorConfig *ec) {
+    FILE *fp = fopen(ec->filename, "r");
     if (!fp) return;
 
     char buffer[1024];
@@ -272,7 +273,7 @@ char *editorRowsToString(struct editorConfig* ec, int *buflen) {
     return buf;
 }
 
-void editorSave(struct editorConfig* ec, const char *filename) {
+void editorSave(struct editorConfig* ec) {
     if (ec->numlines == 0) return; // Nothing to save
 
     int len;
@@ -283,7 +284,7 @@ void editorSave(struct editorConfig* ec, const char *filename) {
     }
 
     // Use a temporary file handle for writing
-    FILE *fp = fopen(filename, "w");
+    FILE *fp = fopen(ec->filename, "w");
     if (fp == NULL) {
         perror("Failed to open file for writing");
         free(buf);
@@ -439,10 +440,11 @@ void editorInsertNewline(struct editorConfig *ec) {
 }
 
 int main(int argc, char *argv[]) {
-    struct editorConfig ec = {0, 0, 0, NULL, 0, 0};
+    struct editorConfig ec = {0};
 
-    const char *filename = (argc >= 2) ? argv[1] : "new_file.txt";
-    if (argc >= 2) editorOpen(&ec, filename);
+    char *filename = (argc >= 2) ? argv[1] : "new_file.txt";
+    ec.filename = strdup(filename);
+    editorOpen(&ec);
 
     enableRawMode();
 
@@ -470,7 +472,7 @@ int main(int argc, char *argv[]) {
                 editorInsertNewline(&ec);
                 break;
             case CTRL_S:
-                editorSave(&ec, filename);
+                editorSave(&ec);
                 break;
             case CTRL_Q:
                 if (ec.modified > 0) {
@@ -479,7 +481,7 @@ int main(int argc, char *argv[]) {
                     while (1) {
                         int c = editorReadKey();
                         if (c == 'y' || c == 'Y') {
-                            editorSave(&ec, filename);
+                            editorSave(&ec);
                             running = 0;
                             break;
                         } else if (c == 'n' || c == 'N') {
@@ -509,6 +511,7 @@ int main(int argc, char *argv[]) {
         free(ec.rows[i].chars);
     }
     free(ec.rows);
+    free(ec.filename);
 
     return 0;
 }
