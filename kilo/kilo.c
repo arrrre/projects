@@ -222,7 +222,10 @@ void editorInsertRow(struct editorConfig *ec, int at, char *s, size_t len) {
 
 void editorOpen(struct editorConfig *ec) {
     FILE *fp = fopen(ec->filename, "r");
-    if (!fp) return;
+    if (!fp) {
+        editorInsertRow(ec, ec->numlines, "", 0);
+        return;
+    }
 
     char buffer[1024];
     int fileEndsWithNewline = 0;
