@@ -228,23 +228,18 @@ void editorOpen(struct editorConfig *ec) {
     }
 
     char buffer[1024];
-    int fileEndsWithNewline = 0;
+    char lastReadChar;
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
         size_t len = strlen(buffer);
-        // Strip trailing newlines
         while (len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r')) {
-            fileEndsWithNewline = buffer[len-1] == '\n' ? 1 : 0;
+            lastReadChar = buffer[len - 1];
             len--;
         }
         editorInsertRow(ec, ec->numlines, buffer, len);
     }
 
+    if (ec->numlines == 0 || lastReadChar == '\n') editorInsertRow(ec, ec->numlines, "", 0);
     fclose(fp);
-    
-    // If file is empty, ensure there is at least one blank row
-    if (ec->numlines == 0 || fileEndsWithNewline) {
-        editorInsertRow(ec, ec->numlines, "", 0);
-    }
 }
 
 char *editorRowsToString(struct editorConfig* ec, int *buflen) {
