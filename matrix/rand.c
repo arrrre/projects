@@ -16,4 +16,3 @@ float rand_get(float min, float max) {
 
 	return min + ((float)rand() / RAND_MAX) * (max - min);
 }
-
