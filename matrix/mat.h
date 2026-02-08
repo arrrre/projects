@@ -6,10 +6,11 @@ typedef struct {
 } matrix_t;
 
 matrix_t* mat_create(int rows, int cols);
-void mat_destroy(matrix_t* m);
-void mat_clear(matrix_t* m);
+void mat_free(matrix_t* m);
 void mat_print(matrix_t* m);
+void mat_clear(matrix_t* m);
 void mat_fill(matrix_t* m, float f);
+void mat_fill_rand(matrix_t* m, float min, float max);
 void mat_scale(matrix_t* m, float f);
 void mat_transpose(matrix_t* m);
 bool mat_add(matrix_t* out, matrix_t* a, matrix_t* b);

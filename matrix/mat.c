@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "mat.h"
+#include "rand.h"
 
 matrix_t* mat_create(int rows, int cols) {
     int size = rows * cols;
@@ -14,14 +15,9 @@ matrix_t* mat_create(int rows, int cols) {
     return m;
 }
 
-void mat_destroy(matrix_t* m) {
+void mat_free(matrix_t* m) {
     free(m->data);
     free(m);
-}
-
-void mat_clear(matrix_t* m) {
-    int size = m->rows * m->cols;
-    memset(m->data, 0, size * sizeof(float));
 }
 
 void mat_print(matrix_t* m) {
@@ -33,6 +29,11 @@ void mat_print(matrix_t* m) {
     }
 }
 
+void mat_clear(matrix_t* m) {
+    int size = m->rows * m->cols;
+    memset(m->data, 0, size * sizeof(float));
+}
+
 void mat_fill(matrix_t* m, float f) {
     int size = m->rows * m->cols;
     for (int i = 0; i < size; i++) {
@@ -40,10 +41,17 @@ void mat_fill(matrix_t* m, float f) {
     }
 }
 
+void mat_fill_rand(matrix_t* m, float min, float max) {
+	int size = m->rows * m->cols;
+	for (int i = 0; i < size; i++) {
+		m->data[i] = rand_get(min, max);
+	}
+}
+
 void mat_scale(matrix_t* m, float f) {
     int size = m->rows * m->cols;
     for (int i = 0; i < size; i++) {
-        m->data[i] = f * m->data[i];
+        m->data[i] *= f;
     }
 }
 
