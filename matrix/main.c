@@ -2,41 +2,54 @@
 
 #include "mat.h"
 
-int main() {
-	int rows = 2, cols = 2;
-	int size = rows * cols;
-	matrix_t* m1 = mat_create(rows, cols);
-	matrix_t* m2 = mat_create(rows, cols);
-	matrix_t* m3 = mat_create(rows, cols);
-	matrix_t* m4 = mat_create(rows, cols);
-	matrix_t* m5 = mat_create(cols, rows);
-
-	for (int i = 0; i < size; i++) {
-		m1->data[i] = (i + 1) * 10;
-		m2->data[i] = (i + 5) * 10;
+void draw_mnist_digit(float* data, int image_rows, int image_cols) {
+	for (int y = 0; y < image_rows; y++) {
+		for (int x = 0; x < image_cols; x++) {
+			float num = data[x + y * image_cols];
+			// Some grayscale color thing... 0-255
+			unsigned int col = 232 + (unsigned int)(num * 24);
+			printf("\x1b[48;5;%dm  ", col);
+		}
+		printf("\n");
 	}
-	// mat_fill_rand(m2, 5, 10);
+	printf("\x1b[0m]");
+}
 
-	bool success_add = mat_add(m3, m1, m2);
-	bool success_mul1 = mat_mul(m4, m1, m2, false, false);
-	bool success_mul2 = mat_mul(m5, m1, m2, true, true);
+int main() {
+	const int image_rows = 28, image_cols = 28;
+	const int image_size = image_rows * image_cols;
+	const int train_set_size = 60000;
+	const int test_set_size = 10000;
+	matrix_t* train_images = mat_load(train_set_size, image_size, "train_images.mat");
+	matrix_t* test_images = mat_load(test_set_size, image_size, "test_images.mat");
+	matrix_t* train_labels = mat_create(train_set_size, 10);
+	matrix_t* test_labels = mat_create(test_set_size, 10);
+	
+	{
+		matrix_t* train_labels_file = mat_load(train_set_size, 1, "train_labels.mat");
+		matrix_t* test_labels_file = mat_load(test_set_size, 1, "test_labels.mat");
 
-	printf("m1\n");
-	mat_print(m1);
-	printf("m2\n");
-	mat_print(m2);
-	printf("m3 %s\n", success_add ? "success" : "failure");
-	mat_print(m3);
-	printf("m4 %s\n", success_mul1 ? "success" : "failure");
-	mat_print(m4);
-    printf("m5 %s\n", success_mul2 ? "success" : "failure");
-	mat_print(m5);
+		for (int i = 0; i < train_set_size; i++) {
+			unsigned int num = train_labels_file->data[i];
+			train_labels->data[i * 10 + num] = 1.0f;
+		}
 
-	mat_free(m1);
-	mat_free(m2);
-	mat_free(m3);
-	mat_free(m4);
-	mat_free(m5);
+		for (int i = 0; i < test_set_size; i++) {
+			unsigned int num = test_labels_file->data[i];
+			test_labels->data[i * 10 + num] = 1.0f;
+		}
+	}
+
+	// TODO: Remove and add files back for Git.
+
+	draw_mnist_digit(train_images->data + 3 * image_size, image_rows, image_cols);
+
+	mat_free(train_images);
+	mat_free(test_images);
+	mat_free(train_labels);
+	mat_free(test_labels);
+	// mat_free(train_labels_file); // Further up? in {}?
+	// mat_free(test_labels_file);
 
 	return 0;
 }

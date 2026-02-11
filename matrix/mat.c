@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,58 +16,89 @@ matrix_t* mat_create(int rows, int cols) {
     return m;
 }
 
-void mat_free(matrix_t* m) {
-    free(m->data);
-    free(m);
+matrix_t* mat_load(int rows, int cols, const char* filename) {
+    matrix_t* mat = mat_create(rows, cols);
+
+    FILE* f = fopen(filename, "rb");
+
+    fseek(f, 0, SEEK_END);
+    int size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    size = fmin(size, sizeof(float) * rows * cols);
+
+    fread(mat->data, 1, size, f);
+
+    return mat;
 }
 
-void mat_print(matrix_t* m) {
-    for (int i = 0; i < m->rows; i++) {
-        for (int j = 0; j < m->cols; j++) {
-            printf("%.2f ", m->data[i * m->cols + j]);
+void mat_free(matrix_t* mat) {
+    free(mat->data);
+    free(mat);
+}
+
+void mat_print(matrix_t* mat) {
+    for (int i = 0; i < mat->rows; i++) {
+        for (int j = 0; j < mat->cols; j++) {
+            printf("%.2f ", mat->data[i * mat->cols + j]);
         }
         printf("\n");
     }
 }
 
-void mat_clear(matrix_t* m) {
-    int size = m->rows * m->cols;
-    memset(m->data, 0, size * sizeof(float));
+bool mat_copy(matrix_t* dst, matrix_t* src) {
+    if (dst->rows != src->rows || dst->cols != src->cols) return false;
+
+    int size = dst->rows * dst->cols;
+    for (int i = 0; i < size; i++) {
+        dst->data[i] = src->data[i];
+    }
+
+    return true;
 }
 
-void mat_fill(matrix_t* m, float f) {
-    int size = m->rows * m->cols;
+void mat_clear(matrix_t* mat) {
+    int size = mat->rows * mat->cols;
+    memset(mat->data, 0, size * sizeof(float));
+}
+
+void mat_fill(matrix_t* mat, float x) {
+    int size = mat->rows * mat->cols;
     for (int i = 0; i < size; i++) {
-        m->data[i] = f;
+        mat->data[i] = x;
     }
 }
 
-void mat_fill_rand(matrix_t* m, float min, float max) {
-	int size = m->rows * m->cols;
+void mat_fill_rand(matrix_t* mat, float min, float max) {
+	int size = mat->rows * mat->cols;
 	for (int i = 0; i < size; i++) {
-		m->data[i] = rand_get(min, max);
+		mat->data[i] = rand_get(min, max);
 	}
 }
 
-void mat_scale(matrix_t* m, float f) {
-    int size = m->rows * m->cols;
+void mat_scale(matrix_t* mat, float scale) {
+    int size = mat->rows * mat->cols;
     for (int i = 0; i < size; i++) {
-        m->data[i] *= f;
+        mat->data[i] *= scale;
     }
 }
 
-void mat_transpose(matrix_t* m) {
-    int size = m->rows * m->cols;
+float mat_sum(matrix_t* mat) {
+    int size = mat->rows * mat->cols;
+
+    float sum = 0.0f;
     for (int i = 0; i < size; i++) {
-        m->data[i] = m->data[i];
+        sum += mat->data[i];
     }
+
+    return sum;
 }
 
-bool mat_add(matrix_t* out, matrix_t* a, matrix_t* b) {
+bool mat_add(matrix_t* out, const matrix_t* a, const matrix_t* b) {
     if (a->rows != b->rows || a->cols != b->cols) return false;
     if (a->rows != out->rows || a->cols != out->cols) return false;
 
-    int size = a->rows * a->cols;
+    int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
         out->data[i] = a->data[i] + b->data[i];
     }
@@ -74,11 +106,11 @@ bool mat_add(matrix_t* out, matrix_t* a, matrix_t* b) {
     return true;
 }
 
-bool mat_sub(matrix_t* out, matrix_t* a, matrix_t* b) {
+bool mat_sub(matrix_t* out, const matrix_t* a, const matrix_t* b) {
     if (a->rows != b->rows || a->cols != b->cols) return false;
     if (a->rows != out->rows || a->cols != out->cols) return false;
 
-    int size = a->rows * a->cols;
+    int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
         out->data[i] = a->data[i] - b->data[i];
     }
@@ -86,7 +118,10 @@ bool mat_sub(matrix_t* out, matrix_t* a, matrix_t* b) {
     return true;
 }
 
-bool mat_mul(matrix_t* out, matrix_t* a, matrix_t* b, bool transpose_a, bool transpose_b) {
+bool mat_mul(
+    matrix_t* out, const  matrix_t* a, const matrix_t* b,
+    bool transpose_a, bool transpose_b
+) {
     int a_rows = transpose_a ? a->cols : a->rows;
     int a_cols = transpose_a ? a->rows : a->cols;
     int b_rows = transpose_b ? b->cols : b->rows;
@@ -110,14 +145,59 @@ bool mat_mul(matrix_t* out, matrix_t* a, matrix_t* b, bool transpose_a, bool tra
     return true;
 }
 
-bool mat_mul_ew(matrix_t* out, matrix_t* a, matrix_t* b) {
+bool mat_mul_ew(matrix_t* out, const matrix_t* a, const matrix_t* b) {
     if (a->rows != b->rows || a->cols != b->cols) return false;
     if (a->rows != out->rows || a->cols != out->cols) return false;
 
-    int size = a->rows * a->cols;
+    int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
         out->data[i] = a->data[i] * b->data[i];
     }
 
     return true;
 }
+
+bool mat_relu(matrix_t* out, const matrix_t* in) {
+    if (out->rows != in->rows || out->cols != in->cols) return false;
+
+    int size = out->rows * out->cols;
+    for (int i = 0; i < size; i++) {
+        out->data[i] = fmax(0.0f, in->data[i]);
+    }
+
+    return true;
+}
+
+bool mat_softmax(matrix_t* out, const matrix_t* in) {
+    if (out->rows != in->rows || out->cols != in->cols) return false;
+
+    int size = out->rows * out->cols;
+
+    float sum = 0.0f;
+    for (int i = 0; i < size; i++) {
+        out->data[i] = expf(in->data[i]);
+        sum += in->data[i];
+    }
+
+    mat_scale(out, 1.0f / sum);
+
+    return true;
+}
+
+bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
+    if (p->rows != q->rows || p->cols != q->cols) return false;
+    if (p->rows != out->rows || p->cols != out->cols) return false;
+
+    int size = out->rows * out->cols;
+    for (int i = 0; i < size; i++) {
+        out->data[i] = p->data[i] == 0.0f ?
+            0.0f : p->data[i] * -logf(q->data[i]);
+    }
+
+    return true;
+}
+
+bool mat_relu_add_grad(matrix_t* out, const matrix_t* in);
+bool mat_softmax_add_grad(matrix_t* out, const matrix_t* in);
+bool mat_cross_entropy_add_grad(matrix_t* out, const matrix_t* p, const matrix_t* q);
+
