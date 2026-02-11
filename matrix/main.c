@@ -20,14 +20,14 @@ int main() {
 	const int image_size = image_rows * image_cols;
 	const int train_set_size = 60000;
 	const int test_set_size = 10000;
-	matrix_t* train_images = mat_load(train_set_size, image_size, "train_images.mat");
-	matrix_t* test_images = mat_load(test_set_size, image_size, "test_images.mat");
+	matrix_t* train_images = mat_load(train_set_size, image_size, "data/train_images.mat");
+	matrix_t* test_images = mat_load(test_set_size, image_size, "data/test_images.mat");
 	matrix_t* train_labels = mat_create(train_set_size, 10);
 	matrix_t* test_labels = mat_create(test_set_size, 10);
 	
 	{
-		matrix_t* train_labels_file = mat_load(train_set_size, 1, "train_labels.mat");
-		matrix_t* test_labels_file = mat_load(test_set_size, 1, "test_labels.mat");
+		matrix_t* train_labels_file = mat_load(train_set_size, 1, "data/train_labels.mat");
+		matrix_t* test_labels_file = mat_load(test_set_size, 1, "data/test_labels.mat");
 
 		for (int i = 0; i < train_set_size; i++) {
 			unsigned int num = train_labels_file->data[i];
@@ -39,8 +39,6 @@ int main() {
 			test_labels->data[i * 10 + num] = 1.0f;
 		}
 	}
-
-	// TODO: Remove and add files back for Git.
 
 	draw_mnist_digit(train_images->data + 3 * image_size, image_rows, image_cols);
 
