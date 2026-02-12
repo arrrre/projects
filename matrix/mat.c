@@ -242,6 +242,19 @@ bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
     return true;
 }
 
-bool mat_relu_add_grad(matrix_t* out, const matrix_t* in);
-bool mat_softmax_add_grad(matrix_t* out, const matrix_t* in);
-bool mat_cross_entropy_add_grad(matrix_t* out, const matrix_t* p, const matrix_t* q);
+bool mat_relu_add_grad(matrix_t* out, const matrix_t* in, const matrix_t* grad) {
+    
+}
+
+bool mat_softmax_add_grad(
+    matrix_t* out, const matrix_t* softmax_out, const matrix_t* grad
+) {
+
+}
+
+bool mat_cross_entropy_add_grad(
+    matrix_t* p_grad, matrix_t* q_grad, 
+    const matrix_t* p, const matrix_t* q, const matrix_t* grad
+) {
+
+}
