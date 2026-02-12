@@ -12,7 +12,7 @@ void draw_mnist_digit(float* data, int image_rows, int image_cols) {
 		}
 		printf("\n");
 	}
-	printf("\x1b[0m]");
+	printf("\x1b[0m");
 }
 
 int main() {
@@ -38,16 +38,21 @@ int main() {
 			unsigned int num = test_labels_file->data[i];
 			test_labels->data[i * 10 + num] = 1.0f;
 		}
+
+		mat_free(train_labels_file);
+		mat_free(test_labels_file);
 	}
 
-	draw_mnist_digit(train_images->data + 3 * image_size, image_rows, image_cols);
+	draw_mnist_digit(train_images->data, image_rows, image_cols);
+	for (int i = 0; i < 10; i++) {
+		printf("%.0f ", train_labels->data[i]);
+	}
+	printf("\n");
 
 	mat_free(train_images);
 	mat_free(test_images);
 	mat_free(train_labels);
 	mat_free(test_labels);
-	// mat_free(train_labels_file); // Further up? in {}?
-	// mat_free(test_labels_file);
 
 	return 0;
 }
