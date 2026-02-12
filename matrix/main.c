@@ -31,7 +31,7 @@ typedef enum {
 } model_var_op;
 
 #define MODEL_VAR_MAX_INPUTS 2
-#define MV_NUM_INPUTS(op) ((ip) < _MV_OP_UNARY_START ? 0 : ((op) < _MV_OP_BINARY_START ? 1 : 2))
+#define MV_NUM_INPUTS(op) ((op) < _MV_OP_UNARY_START ? 0 : ((op) < _MV_OP_BINARY_START ? 1 : 2))
 
 typedef struct {
 	int index;
@@ -273,7 +273,171 @@ model_program model_prog_create(model_context* model, model_var* out_var) {
 	model_var** stack = malloc(model->num_vars * sizeof(*stack));
 	model_var** out = malloc(model->num_vars * sizeof(*out));
 
+	stack[stack_size++] = out_var;
+	while (stack_size > 0) {
+		model_var* cur = stack[--stack_size];
+
+		if (cur->index >= model->num_vars) { continue; }
+
+		if (visited[cur->index]) {
+			if (out_size < model->num_vars) {
+				out[out_size++] = cur;
+			}
+			continue;
+		}
+
+		visited[cur->index] = true;
+
+		if (stack_size < model->num_vars) {
+			stack[stack_size++] = cur;
+		}
+
+		int num_inputs = MV_NUM_INPUTS(cur->op);
+		for (int i = 0; i < num_inputs; i++) {
+			model_var* input = cur->inputs[i];
+
+			if (input->index >= model->num_vars || visited[input->index]) {
+				continue;
+			}
+
+			for (int j = 0; j < stack_size; j++) {
+				if (stack[j] == input) {
+					for (int k = j; k < stack_size-1; k++) {
+						stack[k] = stack[k+1];
+					}
+					stack_size--;
+				}
+			}
+
+			if (stack_size < model->num_vars) {
+				stack[stack_size++] = input;
+			}
+		}
+	}
+
+	model_program prog = {
+		.size = out_size,
+		.vars = malloc(sizeof(model_var*) * out_size)
+	};
+
+	memcpy(prog.vars, out, sizeof(model_var*) * out_size);
+
+	free(visited);
+	free(stack);
+	free(out);
+
+	return prog;
 }
 
-void model_prog_compute(model_program* prog);
-void model_prog_compute_grads(model_program* prog);
+void model_prog_compute(model_program* prog) {
+	for (int i = 0; i < prog->size; i++) {
+		model_var* cur = prog->vars[i];
+
+		model_var* a = cur->inputs[0];
+		model_var* b = cur->inputs[1];
+
+		switch (cur->op) {
+			case MV_OP_NULL:
+			case MV_OP_CREATE: break;
+
+			case _MV_OP_UNARY_START: break;
+
+			case MV_OP_RELU: { mat_relu(cur->val, a->val); } break;
+			case MV_OP_SOFTMAX: { mat_softmax(cur->val, a->val); } break;
+
+			case _MV_OP_BINARY_START: break;
+
+			case MV_OP_ADD: { mat_add(cur->val, a->val, b->val); } break;
+			case MV_OP_SUB: { mat_sub(cur->val, a->val, b->val); } break;
+			case MV_OP_MATMUL: {
+				mat_mul(cur->val, a->val, b->val, 1, 0, 0);
+			} break;
+			case MV_OP_CROSS_ENTROPY: {
+				mat_cross_entropy(cur->val, a->val, b->val);
+			} break;
+		}
+	}
+}
+
+void model_prog_compute_grads(model_program* prog) {
+	for (int i = 0; i < prog->size; i++) {
+		model_var* cur = prog->vars[i];
+
+		if ((cur->flags & MV_FLAG_REQUIRES_GRAD) != MV_FLAG_REQUIRES_GRAD) {
+			continue;
+		}
+
+		if (cur->flags & MV_FLAG_PARAMETER) {
+			continue;
+		}
+
+		mat_clear(cur->grad);
+	}
+
+	mat_fill(prog->vars[prog->size-1]->grad, 1.0f);
+
+	for (int i = prog->size; i >= 0; i++) {
+		model_var* cur = prog->vars[i];
+
+		model_var* a = cur->inputs[0];
+		model_var* b = cur->inputs[1];
+
+		int num_inputs = MV_NUM_INPUTS(cur->op);
+
+		if (
+			num_inputs == 1 &&
+			(a->flags & MV_FLAG_REQUIRES_GRAD) != MV_FLAG_REQUIRES_GRAD
+		) {
+			continue;
+		}
+
+		if (
+			num_inputs == 2 &&
+			(a->flags & MV_FLAG_REQUIRES_GRAD) != MV_FLAG_REQUIRES_GRAD &&
+			(b->flags & MV_FLAG_REQUIRES_GRAD) != MV_FLAG_REQUIRES_GRAD
+		) {
+			continue;
+		}
+
+		switch (cur->op) {
+			case MV_OP_NULL:
+			case MV_OP_CREATE: break;
+
+			case _MV_OP_UNARY_START: break;
+
+			case MV_OP_RELU: { };
+			case MV_OP_SOFTMAX: { };
+
+			case _MV_OP_BINARY_START: break;
+
+			case MV_OP_ADD: {
+				if (a->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_add(a->grad, a->grad, cur->grad);
+				}
+
+				if (b->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_add(b->grad, b->grad, cur->grad);
+				}
+			} break;
+			case MV_OP_SUB: {
+				if (a->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_sub(a->grad, a->grad, cur->grad);
+				}
+
+				if (b->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_sub(b->grad, b->grad, cur->grad);
+				}
+			} break;
+			case MV_OP_MATMUL: {
+				if (a->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_mul(a->grad, cur->grad, b->val, 0, 0, 1);
+				}
+
+				if (b->flags & MV_FLAG_REQUIRES_GRAD) {
+					mat_mul(b->grad, a->grad, cur->val, 0, 1, 0);
+				}
+			} break;
+			case MV_OP_CROSS_ENTROPY: { } break;
+		}
+	}
+}
