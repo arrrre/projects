@@ -20,10 +20,11 @@ int main() {
 	const int image_size = image_rows * image_cols;
 	const int train_set_size = 60000;
 	const int test_set_size = 10000;
+	const int num_classes = 10;
 	matrix_t* train_images = mat_load(train_set_size, image_size, "data/train_images.mat");
 	matrix_t* test_images = mat_load(test_set_size, image_size, "data/test_images.mat");
-	matrix_t* train_labels = mat_create(train_set_size, 10);
-	matrix_t* test_labels = mat_create(test_set_size, 10);
+	matrix_t* train_labels = mat_create(train_set_size, num_classes);
+	matrix_t* test_labels = mat_create(test_set_size, num_classes);
 	
 	{
 		matrix_t* train_labels_file = mat_load(train_set_size, 1, "data/train_labels.mat");
@@ -31,12 +32,12 @@ int main() {
 
 		for (int i = 0; i < train_set_size; i++) {
 			unsigned int num = train_labels_file->data[i];
-			train_labels->data[i * 10 + num] = 1.0f;
+			train_labels->data[i * num_classes + num] = 1.0f;
 		}
 
 		for (int i = 0; i < test_set_size; i++) {
 			unsigned int num = test_labels_file->data[i];
-			test_labels->data[i * 10 + num] = 1.0f;
+			test_labels->data[i * num_classes + num] = 1.0f;
 		}
 
 		mat_free(train_labels_file);
@@ -44,7 +45,7 @@ int main() {
 	}
 
 	draw_mnist_digit(train_images->data, image_rows, image_cols);
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < num_classes; i++) {
 		printf("%.0f ", train_labels->data[i]);
 	}
 	printf("\n");
