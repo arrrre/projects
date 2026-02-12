@@ -19,7 +19,7 @@ bool mat_add(matrix_t* out, const matrix_t* a, const matrix_t* b);
 bool mat_sub(matrix_t* out, const matrix_t* a, const matrix_t* b);
 bool mat_mul(
     matrix_t* out, const  matrix_t* a, const matrix_t* b,
-    bool transpose_a, bool transpose_b
+    bool zero_out, bool transpose_a, bool transpose_b
 );
 bool mat_mul_ew(matrix_t* out, const matrix_t* a, const matrix_t* b);
 

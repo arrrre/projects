@@ -118,9 +118,57 @@ bool mat_sub(matrix_t* out, const matrix_t* a, const matrix_t* b) {
     return true;
 }
 
+void _mat_mul_nn(matrix_t* out, const matrix_t* a, const matrix_t* b) {
+    for (int i = 0; i < out->rows; i++) {
+        for (int k = 0; k < a->cols; k++) {
+            for (int j = 0; j < out->cols; j++) {
+                out->data[j + i * out->cols] +=
+                    a->data[k + i * a->cols] *
+                    b->data[j + k * b->cols];
+            }
+        }
+    }
+}
+
+void _mat_mul_nt(matrix_t* out, const matrix_t* a, const matrix_t* b) {
+    for (int i = 0; i < out->rows; i++) {
+        for (int j = 0; j < out->cols; j++) {
+            for (int k = 0; k < a->cols; k++) {
+                out->data[j + i * out->cols] +=
+                    a->data[k + i * a->cols] *
+                    b->data[k + j * b->cols];
+            }
+        }
+    }
+}
+
+void _mat_mul_tn(matrix_t* out, const matrix_t* a, const matrix_t* b) {
+    for (int k = 0; k < a->cols; k++) {
+        for (int i = 0; i < out->rows; i++) {
+            for (int j = 0; j < out->cols; j++) {
+                out->data[j + i * out->cols] +=
+                    a->data[i + k * a->cols] *
+                    b->data[j + k * b->cols];
+            }
+        }
+    }
+}
+
+void _mat_mul_tt(matrix_t* out, const matrix_t* a, const matrix_t* b) {
+    for (int i = 0; i < out->rows; i++) {
+        for (int j = 0; j < out->cols; j++) {
+            for (int k = 0; k < a->cols; k++) {
+                out->data[j + i * out->cols] +=
+                    a->data[i + k * a->cols] *
+                    b->data[k + j * b->cols];
+            }
+        }
+    }
+}
+
 bool mat_mul(
     matrix_t* out, const  matrix_t* a, const matrix_t* b,
-    bool transpose_a, bool transpose_b
+    bool zero_out, bool transpose_a, bool transpose_b
 ) {
     int a_rows = transpose_a ? a->cols : a->rows;
     int a_cols = transpose_a ? a->rows : a->cols;
@@ -129,17 +177,14 @@ bool mat_mul(
     if (a_cols != b_rows) return false;
     if (a_rows != out->rows || b_cols != out->cols) return false;
 
-    for (int i = 0; i < a_rows; i++) {
-        for (int j = 0; j < b_cols; j++) {
-            float sum = 0.0f;
-            for (int k = 0; k < a_cols; k++) {
-                // Determine indices based on transposition
-                int idx_a = transpose_a ? (k * a->cols + i) : (i * a->cols + k);
-                int idx_b = transpose_b ? (j * b->cols + k) : (k * b->cols + j);
-                sum += a->data[idx_a] * b->data[idx_b];
-            }
-            out->data[i * out->cols + j] = sum;
-        }
+    if (zero_out) mat_clear(out);
+
+    unsigned int transpose = (transpose_a << 1) | transpose_b;
+    switch (transpose) {
+        case 0b00: { _mat_mul_nn(out, a, b); } break;
+        case 0b01: { _mat_mul_nt(out, a, b); } break;
+        case 0b10: { _mat_mul_tn(out, a, b); } break;
+        case 0b11: { _mat_mul_tt(out, a, b); } break;
     }
 
     return true;
@@ -200,4 +245,3 @@ bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
 bool mat_relu_add_grad(matrix_t* out, const matrix_t* in);
 bool mat_softmax_add_grad(matrix_t* out, const matrix_t* in);
 bool mat_cross_entropy_add_grad(matrix_t* out, const matrix_t* p, const matrix_t* q);
-
