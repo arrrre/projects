@@ -47,7 +47,7 @@ void mat_print(matrix_t* mat) {
 }
 
 bool mat_copy(matrix_t* dst, matrix_t* src) {
-    if (dst->rows != src->rows || dst->cols != src->cols) return false;
+    if (dst->rows != src->rows || dst->cols != src->cols) { return false; }
 
     int size = dst->rows * dst->cols;
     for (int i = 0; i < size; i++) {
@@ -95,8 +95,8 @@ float mat_sum(matrix_t* mat) {
 }
 
 bool mat_add(matrix_t* out, const matrix_t* a, const matrix_t* b) {
-    if (a->rows != b->rows || a->cols != b->cols) return false;
-    if (a->rows != out->rows || a->cols != out->cols) return false;
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (a->rows != out->rows || a->cols != out->cols) { return false; }
 
     int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
@@ -107,8 +107,8 @@ bool mat_add(matrix_t* out, const matrix_t* a, const matrix_t* b) {
 }
 
 bool mat_sub(matrix_t* out, const matrix_t* a, const matrix_t* b) {
-    if (a->rows != b->rows || a->cols != b->cols) return false;
-    if (a->rows != out->rows || a->cols != out->cols) return false;
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (a->rows != out->rows || a->cols != out->cols) { return false; }
 
     int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
@@ -191,8 +191,8 @@ bool mat_mul(
 }
 
 bool mat_mul_ew(matrix_t* out, const matrix_t* a, const matrix_t* b) {
-    if (a->rows != b->rows || a->cols != b->cols) return false;
-    if (a->rows != out->rows || a->cols != out->cols) return false;
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (a->rows != out->rows || a->cols != out->cols) { return false; }
 
     int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
@@ -203,7 +203,7 @@ bool mat_mul_ew(matrix_t* out, const matrix_t* a, const matrix_t* b) {
 }
 
 bool mat_relu(matrix_t* out, const matrix_t* in) {
-    if (out->rows != in->rows || out->cols != in->cols) return false;
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
 
     int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
@@ -214,7 +214,7 @@ bool mat_relu(matrix_t* out, const matrix_t* in) {
 }
 
 bool mat_softmax(matrix_t* out, const matrix_t* in) {
-    if (out->rows != in->rows || out->cols != in->cols) return false;
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
 
     int size = out->rows * out->cols;
 
@@ -230,8 +230,8 @@ bool mat_softmax(matrix_t* out, const matrix_t* in) {
 }
 
 bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
-    if (p->rows != q->rows || p->cols != q->cols) return false;
-    if (p->rows != out->rows || p->cols != out->cols) return false;
+    if (p->rows != q->rows || p->cols != q->cols) { return false; }
+    if (p->rows != out->rows || p->cols != out->cols) { return false; }
 
     int size = out->rows * out->cols;
     for (int i = 0; i < size; i++) {
@@ -243,7 +243,15 @@ bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
 }
 
 bool mat_relu_add_grad(matrix_t* out, const matrix_t* in, const matrix_t* grad) {
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
+    if (out->rows != grad->rows || out->cols != grad->cols) { return false; }
 
+    int size = out->rows * out->cols;
+    for (int i = 0; i < size; i++) {
+        out->data[i] += in->data[i] > 0.0f ? grad->data[i] : 0.0f;
+    }
+
+    return true;
 }
 
 bool mat_softmax_add_grad(
@@ -256,5 +264,12 @@ bool mat_cross_entropy_add_grad(
     matrix_t* p_grad, matrix_t* q_grad, 
     const matrix_t* p, const matrix_t* q, const matrix_t* grad
 ) {
+    if (p->rows != q->rows || p->cols != q->cols) { return false; }
+    if (p_grad != NULL) {
+        if (p_grad->rows != p->rows || p_grad->cols != p->cols) {
+            return false;
+        }
+    }
 
+    return true;
 }
