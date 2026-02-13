@@ -257,7 +257,23 @@ bool mat_relu_add_grad(matrix_t* out, const matrix_t* in, const matrix_t* grad) 
 bool mat_softmax_add_grad(
     matrix_t* out, const matrix_t* softmax_out, const matrix_t* grad
 ) {
+    if (softmax_out->rows != 1 && softmax_out->cols != 1) { return false; }
 
+    int size = max(softmax_out->rows, softmax_out->cols);
+    matrix_t* jacobian = mat_create(size, size);
+
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            jacobian->data[j + i * size] =
+                softmax_out->data[i] * ((i == j) - softmax_out->data[j]);
+        }
+    }
+
+    mat_mul(out, jacobian, grad, 0, 0, 0);
+
+    mat_free(jacobian);
+
+    return true;
 }
 
 bool mat_cross_entropy_add_grad(
@@ -265,9 +281,26 @@ bool mat_cross_entropy_add_grad(
     const matrix_t* p, const matrix_t* q, const matrix_t* grad
 ) {
     if (p->rows != q->rows || p->cols != q->cols) { return false; }
+
+    int size = p->rows * p->cols;
+
     if (p_grad != NULL) {
         if (p_grad->rows != p->rows || p_grad->cols != p->cols) {
             return false;
+        }
+
+        for (int i = 0; i < size; i++) {
+            p_grad->data[i] += -logf(q->data[i]) * grad->data[i];
+        }
+    }
+
+    if (q_grad != NULL) {
+        if (q_grad->rows != q->rows || q_grad->cols != q->cols) {
+            return false;
+        }
+
+        for (int i = 0; i < size; i++) { // Check if q = 0?
+            q_grad->data[i] += -p->data[i] / q->data[i] * grad->data[i];
         }
     }
 
