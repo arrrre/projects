@@ -259,7 +259,7 @@ bool mat_softmax_add_grad(
 ) {
     if (softmax_out->rows != 1 && softmax_out->cols != 1) { return false; }
 
-    int size = max(softmax_out->rows, softmax_out->cols);
+    int size = fmax(softmax_out->rows, softmax_out->cols);
     matrix_t* jacobian = mat_create(size, size);
 
     for (int i = 0; i < size; i++) {
