@@ -174,10 +174,10 @@ bool mat_mul(
     int a_cols = transpose_a ? a->rows : a->cols;
     int b_rows = transpose_b ? b->cols : b->rows;
     int b_cols = transpose_b ? b->rows : b->cols;
-    if (a_cols != b_rows) return false;
-    if (a_rows != out->rows || b_cols != out->cols) return false;
+    if (a_cols != b_rows) { return false; }
+    if (a_rows != out->rows || b_cols != out->cols) { return false; }
 
-    if (zero_out) mat_clear(out);
+    if (zero_out) { mat_clear(out); }
 
     unsigned int transpose = (transpose_a << 1) | transpose_b;
     switch (transpose) {
@@ -243,7 +243,7 @@ bool mat_cross_entropy(matrix_t* out, const matrix_t* p, const matrix_t* q) {
 }
 
 bool mat_relu_add_grad(matrix_t* out, const matrix_t* in, const matrix_t* grad) {
-    
+
 }
 
 bool mat_softmax_add_grad(
