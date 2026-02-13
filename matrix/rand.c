@@ -11,8 +11,8 @@ void rand_init() {
 	is_initialized = true;
 }
 
-float rand_get(float min, float max) {
+float rand_get() {
 	if (!is_initialized) rand_init();
 
-	return min + ((float)rand() / RAND_MAX) * (max - min);
+	return (float)rand() / RAND_MAX;
 }

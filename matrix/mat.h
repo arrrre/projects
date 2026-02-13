@@ -12,7 +12,7 @@ void mat_print(matrix_t* mat);
 bool mat_copy(matrix_t* dst, matrix_t* src);
 void mat_clear(matrix_t* mat);
 void mat_fill(matrix_t* mat, float x);
-void mat_fill_rand(matrix_t* mat, float min, float max);
+void mat_fill_rand(matrix_t* mat, float lower, float upper);
 void mat_scale(matrix_t* mat, float scale);
 float mat_sum(matrix_t* mat);
 bool mat_add(matrix_t* out, const matrix_t* a, const matrix_t* b);

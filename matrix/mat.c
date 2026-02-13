@@ -69,10 +69,10 @@ void mat_fill(matrix_t* mat, float x) {
     }
 }
 
-void mat_fill_rand(matrix_t* mat, float min, float max) {
+void mat_fill_rand(matrix_t* mat, float lower, float upper) {
 	int size = mat->rows * mat->cols;
 	for (int i = 0; i < size; i++) {
-		mat->data[i] = rand_get(min, max);
+		mat->data[i] = rand_get() * (upper - lower) + lower;
 	}
 }
 
