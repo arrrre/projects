@@ -1,1 +1,0 @@
-float rand_get();

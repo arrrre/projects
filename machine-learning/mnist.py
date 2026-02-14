@@ -31,3 +31,4 @@ print(train_images.shape)
 print(train_labels.shape)
 print(test_images.shape)
 print(test_labels.shape)
+
