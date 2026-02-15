@@ -26,6 +26,7 @@ typedef struct {
 
 typedef struct {
     u32 num_layers;
+    u32 max_layers;
     model_layer** layers;
 } model;
 
@@ -41,7 +42,9 @@ typedef struct {
 } model_training_desc;
 
 model* model_create(mem_arena* arena, u32 max_layers);
-void model_add_layer(
+model* model_load(mem_arena* arena, const char* filename, u32 batch_size);
+void model_save(model* m, const char* filename);
+b32 model_add_layer(
     mem_arena* arena, model* m, layer_type type,
     u32 in_size, u32 out_size, u32 batch_size
 );

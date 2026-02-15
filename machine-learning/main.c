@@ -1,16 +1,18 @@
-#include <math.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "base.h"
 #include "arena.h"
 #include "matrix.h"
 #include "model.h"
 
-void draw_mnist_digit(f32* data, u32 width, u32 height);
 void create_mnist_model(
     mem_arena* arena, model* model,
     u32 image_size, u32 label_count, u32 batch_size
+);
+void draw_mnist_digit(f32* data, u32 width, u32 height);
+void predict_mnist_digit(
+    model* m, f32* data,
+    u32 cols, u32 width, u32 height
 );
 
 int main(void) {
@@ -67,22 +69,19 @@ int main(void) {
     );
 
     model_train(m, &training_desc);
-    
+
+    // Test on an image
+    predict_mnist_digit(
+        m, &test_images->data[12 * test_images->cols],
+        test_images->cols, IMAGE_WIDTH, IMAGE_HEIGHT
+    );
+
+    const char* filename = "data/model.bin";
+    model_save(m, filename);
+
     arena_destroy(perm_arena);
 
     return 0;
-}
-
-void draw_mnist_digit(f32* data, u32 width, u32 height) {
-    for (u32 y = 0; y < height; y++) {
-        for (u32 x = 0; x < width; x++) {
-            f32 num = data[x + y * width];
-            u32 col = 232 + (u32)(num * 23);
-            printf("\x1b[48;5;%dm  ", col);
-        }
-        printf("\n");
-    }
-    printf("\x1b[0m\n");
 }
 
 void create_mnist_model(
@@ -100,4 +99,30 @@ void create_mnist_model(
 
     model_add_layer(arena, m, LAYER_LINEAR, hidden2,    label_count, batch_size);
     model_add_layer(arena, m, LAYER_SOFTMAX, label_count, label_count, batch_size);
+}
+
+void draw_mnist_digit(f32* data, u32 width, u32 height) {
+    for (u32 y = 0; y < height; y++) {
+        for (u32 x = 0; x < width; x++) {
+            f32 num = data[x + y * width];
+            u32 col = 232 + (u32)(num * 23);
+            printf("\x1b[48;5;%dm  ", col);
+        }
+        printf("\n");
+    }
+    printf("\x1b[0m\n");
+}
+
+void predict_mnist_digit(
+    model* m, f32* data,
+    u32 cols, u32 width, u32 height
+) {
+    matrix test_img = {
+        .rows = 1,
+        .cols = cols,
+        .data = data
+    };
+    draw_mnist_digit(test_img.data, width, height);
+    u32 guess = model_predict(m, &test_img);
+    printf("Model guess: %d\n", guess);
 }

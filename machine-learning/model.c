@@ -8,14 +8,75 @@
 model* model_create(mem_arena* arena, u32 max_layers) {
     model* m = PUSH_STRUCT(arena, model);
     m->layers = PUSH_ARRAY(arena, model_layer*, max_layers);
+    m->num_layers = 0;
+    m->max_layers = max_layers;
 
     return m;
 }
 
-void model_add_layer(
+model* model_load(mem_arena* arena, const char* filename, u32 batch_size) {
+    FILE* f = fopen(filename, "rb");
+    if (!f) { return NULL; }
+
+    u32 num_layers;
+    fread(&num_layers, sizeof(u32), 1, f);
+
+    model* m = model_create(arena, num_layers);
+    
+    u32 current_in_size = 0; 
+
+    for (u32 i = 0; i < num_layers; i++) {
+        layer_type type;
+        fread(&type, sizeof(layer_type), 1, f);
+
+        if (type == LAYER_LINEAR) {
+            u32 rows, cols;
+            fread(&rows, sizeof(u32), 1, f);
+            fread(&cols, sizeof(u32), 1, f);
+
+            model_add_layer(arena, m, type, rows, cols, batch_size);
+            
+            fread(m->layers[i]->weights->data, sizeof(f32), rows * cols, f);
+            fread(m->layers[i]->bias->data, sizeof(f32), 1 * cols, f);
+            
+            current_in_size = cols;
+        } else {
+            model_add_layer(arena, m, type, current_in_size, current_in_size, batch_size);
+        }
+    }
+
+    fclose(f);
+    return m;
+}
+
+void model_save(model* m, const char* filename) {
+    FILE* f = fopen(filename, "wb");
+    if (!f) { return; }
+
+    fwrite(&m->num_layers, sizeof(u32), 1, f);
+
+    for (u32 i = 0; i < m->num_layers; i++) {
+        model_layer* l = m->layers[i];
+
+        fwrite(&l->type, sizeof(layer_type), 1, f);
+
+        if (l->type == LAYER_LINEAR) {
+            fwrite(&l->weights->rows, sizeof(u32), 1, f);
+            fwrite(&l->weights->cols, sizeof(u32), 1, f);
+            
+            fwrite(l->weights->data, sizeof(f32), l->weights->rows * l->weights->cols, f);
+            fwrite(l->bias->data, sizeof(f32), l->bias->rows * l->bias->cols, f);
+        }
+    }
+    fclose(f);
+}
+
+b32 model_add_layer(
     mem_arena* arena, model* m, layer_type type,
     u32 in_size, u32 out_size, u32 batch_size
 ) {
+    if (m->num_layers >= m->max_layers) { return false; }
+
     model_layer* layer = PUSH_STRUCT(arena, model_layer);
     layer->type = type;
 
@@ -35,6 +96,8 @@ void model_add_layer(
     }
 
     m->layers[m->num_layers++] = layer;
+    
+    return true;
 }
 
 void model_init_weights(model* m) {
@@ -270,4 +333,8 @@ f32 model_evaluate(model* m, matrix* test_images, matrix* test_labels, u32 batch
     return accuracy;
 }
 
-u32 model_predict(model* m, matrix* image);
+u32 model_predict(model* m, matrix* image) {
+    matrix* pred = model_forward(m, image);
+
+    return mat_argmax_row(pred, 0);
+}
