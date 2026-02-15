@@ -34,9 +34,7 @@ matrix* mat_load(mem_arena* arena, u32 rows, u32 cols, const char* filename) {
 }
 
 b32 mat_copy(matrix* dst, matrix* src) {
-    if (dst->rows != src->rows || dst->cols != src->cols) {
-        return false;
-    }
+    if (dst->rows != src->rows || dst->cols != src->cols) { return false; }
 
     memcpy(dst->data, src->data, sizeof(f32) * (u64)dst->rows * dst->cols);
 
@@ -61,7 +59,6 @@ void mat_fill_rand(matrix* mat, f32 lower, f32 upper) {
     for (u64 i = 0; i < size; i++) {
         mat->data[i] = prng_randf() * (upper - lower) + lower;
     }
-
 }
 
 void mat_scale(matrix* mat, f32 scale) {
@@ -83,6 +80,34 @@ f32 mat_sum(matrix* mat) {
     return sum;
 }
 
+b32 mat_sum_rows(matrix* out, matrix* in, b8 zero_out) {
+    if (out->rows != in->rows || out->cols != 1) { return false; }
+
+    if (zero_out) { mat_clear(out); }
+
+    for (u32 i = 0; i < out->rows; i++) {
+        for (u32 j = 0; j < in->cols; j++) {
+            out->data[i] += in->data[j + i * in->cols];
+        }
+    }
+
+    return true;
+}
+
+b32 mat_sum_cols(matrix* out, matrix* in, b8 zero_out) {
+    if (out->cols != in->cols || out->rows != 1) { return false; }
+
+    if (zero_out) { mat_clear(out); }
+
+    for (u32 j = 0; j < in->rows; j++) {
+        for (u32 i = 0; i < out->cols; i++) {
+            out->data[i] += in->data[i + j * in->cols];
+        }
+    }
+
+    return true;
+}
+
 u64 mat_argmax(matrix* mat) {
     u64 size = (u64)mat->rows * mat->cols;
 
@@ -97,12 +122,8 @@ u64 mat_argmax(matrix* mat) {
 }
 
 b32 mat_add(matrix* out, const matrix* a, const matrix* b) {
-    if (a->rows != b->rows || a->cols != b->cols) {
-        return false;
-    }
-    if (out->rows != a->rows || out->cols != a->cols) {
-        return false;
-    }
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (out->rows != a->rows || out->cols != a->cols) { return false; }
 
     u64 size = (u64)out->rows * out->cols;
     for (u64 i = 0; i < size; i++) {
@@ -113,12 +134,8 @@ b32 mat_add(matrix* out, const matrix* a, const matrix* b) {
 }
 
 b32 mat_sub(matrix* out, const matrix* a, const matrix* b) {
-    if (a->rows != b->rows || a->cols != b->cols) {
-        return false;
-    }
-    if (out->rows != a->rows || out->cols != a->cols) {
-        return false;
-    }
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (out->rows != a->rows || out->cols != a->cols) { return false; }
 
     u64 size = (u64)out->rows * out->cols;
     for (u64 i = 0; i < size; i++) {
@@ -188,9 +205,7 @@ b32 mat_mul(
     if (a_cols != b_rows) { return false; }
     if (out->rows != a_rows || out->cols != b_cols) { return false; }
 
-    if (zero_out) {
-        mat_clear(out);
-    }
+    if (zero_out) { mat_clear(out); }
 
     u32 transpose = (transpose_a << 1) | transpose_b;
     switch (transpose) {
@@ -204,9 +219,7 @@ b32 mat_mul(
 }
 
 b32 mat_relu(matrix* out, const matrix* in) {
-    if (out->rows != in->rows || out->cols != in->cols) {
-        return false;
-    }
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
 
     u64 size = (u64)out->rows * out->cols;
     for (u64 i = 0; i < size; i++) {
@@ -217,9 +230,7 @@ b32 mat_relu(matrix* out, const matrix* in) {
 }
 
 b32 mat_softmax(matrix* out, const matrix* in) {
-    if (out->rows != in->rows || out->cols != in->cols) {
-        return false;
-    }
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
 
     u64 size = (u64)out->rows * out->cols;
 
@@ -248,12 +259,8 @@ b32 mat_cross_entropy(matrix* out, const matrix* p, const matrix* q) {
 }
 
 b32 mat_relu_add_grad(matrix* out, const matrix* in, const matrix* grad) {
-    if (out->rows != in->rows || out->cols != in->cols) {
-        return false;
-    }
-    if (out->rows != grad->rows || out->cols != grad->cols) {
-        return false;
-    }
+    if (out->rows != in->rows || out->cols != in->cols) { return false; }
+    if (out->rows != grad->rows || out->cols != grad->cols) { return false; }
 
     u64 size = (u64)out->rows * out->cols;
     for (u64 i = 0; i < size; i++) {
@@ -266,9 +273,7 @@ b32 mat_relu_add_grad(matrix* out, const matrix* in, const matrix* grad) {
 b32 mat_softmax_add_grad(
     matrix* out, const matrix* softmax_out, const matrix* grad
 ) {
-    if (softmax_out->rows != 1 && softmax_out->cols != 1) {
-        return false;
-    }
+    if (softmax_out->rows != 1 && softmax_out->cols != 1) { return false; }
 
     mem_arena_temp scratch = arena_scratch_get(NULL, 0);
 

@@ -18,6 +18,8 @@ void mat_fill(matrix* mat, f32 x);
 void mat_fill_rand(matrix* mat, f32 lower, f32 upper);
 void mat_scale(matrix* mat, f32 scale);
 f32 mat_sum(matrix* mat);
+b32 mat_sum_rows(matrix* out, matrix* in, b8 zero_out);
+b32 mat_sum_cols(matrix* out, matrix* in, b8 zero_out);
 u64 mat_argmax(matrix* mat);
 b32 mat_add(matrix* out, const matrix* a, const matrix* b);
 b32 mat_sub(matrix* out, const matrix* a, const matrix* b);
