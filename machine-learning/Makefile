@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -g
+CFLAGS = -Wall -Wextra -pedantic -g -O3 -mavx2
 
 main:
-	$(CC) $(CFLAGS) main.c arena.c matrix.c model.c prng.c -o main.exe
+	$(CC) $(CFLAGS) main.c arena.c prng.c matrix.c model.c -o main.exe

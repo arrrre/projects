@@ -21,6 +21,8 @@ f32 mat_sum(matrix* mat);
 b32 mat_sum_rows(matrix* out, matrix* in, b8 zero_out);
 b32 mat_sum_cols(matrix* out, matrix* in, b8 zero_out);
 u64 mat_argmax(matrix* mat);
+u64 mat_argmax_row(matrix* mat, u32 r);
+u64 mat_argmax_col(matrix* mat, u32 c);
 b32 mat_add(matrix* out, const matrix* a, const matrix* b);
 b32 mat_sub(matrix* out, const matrix* a, const matrix* b);
 b32 mat_mul(
@@ -29,14 +31,7 @@ b32 mat_mul(
 );
 b32 mat_relu(matrix* out, const matrix* in);
 b32 mat_softmax(matrix* out, const matrix* in);
-b32 mat_cross_entropy(matrix* out, const matrix* p, const matrix* q);
+f32 mat_cross_entropy(const matrix* p, const matrix* q);
 b32 mat_relu_add_grad(matrix* out, const matrix* in, const matrix* grad);
-b32 mat_softmax_add_grad(
-    matrix* out, const matrix* softmax_out, const matrix* grad
-);
-b32 mat_cross_entropy_add_grad(
-    matrix* p_grad, matrix* q_grad,
-    const matrix* p, const matrix* q, const matrix* grad
-);
 
 #endif

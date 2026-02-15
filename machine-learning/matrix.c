@@ -121,6 +121,28 @@ u64 mat_argmax(matrix* mat) {
     return max_i;
 }
 
+u64 mat_argmax_row(matrix* mat, u32 r) {
+    u64 max_i = 0;
+    for (u64 i = 0; i < mat->cols; i++) {
+        if (mat->data[i + r * mat->cols] > mat->data[max_i + r * mat->cols]) {
+            max_i = i;
+        }
+    }
+
+    return max_i;
+}
+
+u64 mat_argmax_col(matrix* mat, u32 c) {
+    u64 max_i = 0;
+    for (u64 i = 0; i < mat->rows; i++) {
+        if (mat->data[c + i * mat->cols] > mat->data[c + max_i * mat->cols]) {
+            max_i = i;
+        }
+    }
+
+    return max_i;
+}
+
 b32 mat_add(matrix* out, const matrix* a, const matrix* b) {
     if (a->rows != b->rows || a->cols != b->cols) { return false; }
     if (out->rows != a->rows || out->cols != a->cols) { return false; }
@@ -231,31 +253,40 @@ b32 mat_relu(matrix* out, const matrix* in) {
 
 b32 mat_softmax(matrix* out, const matrix* in) {
     if (out->rows != in->rows || out->cols != in->cols) { return false; }
+    
+    for (u32 r = 0; r < in->rows; r++) {
+        f32 max_val = in->data[r * in->cols];
+        for (u32 c = 1; c < in->cols; c++) {
+            max_val = MAX(max_val, in->data[c + r * in->cols]);
+        }
 
-    u64 size = (u64)out->rows * out->cols;
+        f32 sum = 0.0f;
+        for (u32 c = 0; c < in->cols; c++) {
+            f32 x = expf(in->data[c + r * in->cols] - max_val);
+            out->data[c + r * in->cols] = x;
+            sum += x;
+        }
 
-    f32 sum = 0.0f;
-    for (u64 i = 0; i < size; i++) {
-        out->data[i] = expf(in->data[i]);
-        sum += out->data[i];
+        for (u32 c = 0; c < in->cols; c++) {
+            out->data[c + r * in->cols] /= (sum + 1e-8f);
+        }
     }
-
-    mat_scale(out, 1.0f / sum);
 
     return true;
 }
 
-b32 mat_cross_entropy(matrix* out, const matrix* p, const matrix* q) {
+f32 mat_cross_entropy(const matrix* p, const matrix* q) {
     if (p->rows != q->rows || p->cols != q->cols) { return false; }
-    if (out->rows != p->rows || out->cols != p->cols) { return false; }
+    
+    u64 size = (u64)p->rows * p->cols;
 
-    u64 size = (u64)out->rows * out->cols;
-    for (u64 i = 0; i < size; i++) {
-        out->data[i] = p->data[i] == 0.0f ?
-            0.0f : p->data[i] * -logf(q->data[i]);
+    f32 total_loss = 0.0f;
+    for (u32 i = 0; i < size; i++) {
+        total_loss -= p->data[i] > 0.0f ?
+            p->data[i] * logf(q->data[i] + 1e-8f) : 0.0f;
     }
 
-    return true;
+    return total_loss / p->rows;
 }
 
 b32 mat_relu_add_grad(matrix* out, const matrix* in, const matrix* grad) {
@@ -265,61 +296,6 @@ b32 mat_relu_add_grad(matrix* out, const matrix* in, const matrix* grad) {
     u64 size = (u64)out->rows * out->cols;
     for (u64 i = 0; i < size; i++) {
         out->data[i] += in->data[i] > 0.0f ? grad->data[i] : 0.0f;
-    }
-
-    return true;
-}
-
-b32 mat_softmax_add_grad(
-    matrix* out, const matrix* softmax_out, const matrix* grad
-) {
-    if (softmax_out->rows != 1 && softmax_out->cols != 1) { return false; }
-
-    mem_arena_temp scratch = arena_scratch_get(NULL, 0);
-
-    u32 size = MAX(softmax_out->rows, softmax_out->cols);
-    matrix* jacobian = mat_create(scratch.arena, size, size);
-
-    for (u32 i = 0; i < size; i++) {
-        for (u32 j = 0; j < size; j++) {
-            jacobian->data[j + i * size] =
-                softmax_out->data[i] * ((i == j) - softmax_out->data[j]);
-        }
-    }
-
-    mat_mul(out, jacobian, grad, 0, 0, 0);
-
-    arena_scratch_release(scratch);
-
-    return true;
-}
-
-b32 mat_cross_entropy_add_grad(
-    matrix* p_grad, matrix* q_grad,
-    const matrix* p, const matrix* q, const matrix* grad
-) {
-    if (p->rows != q->rows || p->cols != q->cols) { return false; }
-
-    u64 size = (u64)p->rows * p->cols;
-
-    if (p_grad != NULL) {
-        if (p_grad->rows != p->rows || p_grad->cols != p->cols) {
-            return false; 
-        }
-
-        for (u64 i = 0; i < size; i++) {
-            p_grad->data[i] += -logf(q->data[i]) * grad->data[i];
-        }
-    }
-
-    if (q_grad != NULL) {
-        if (q_grad->rows != q->rows || q_grad->cols != q->cols) {
-            return false; 
-        }
-
-        for (u64 i = 0; i < size; i++) {
-            q_grad->data[i] += -p->data[i] / q->data[i] * grad->data[i];
-        }
     }
 
     return true;
