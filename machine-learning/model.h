@@ -48,9 +48,6 @@ b32 model_add_layer(
     mem_arena* arena, model* m, layer_type type,
     u32 in_size, u32 out_size, u32 batch_size
 );
-matrix* model_forward(model* m, matrix* input);
-void model_backward(model* m, matrix* loss_grad);
-void model_update(model* m, f32 lr);
 void model_train(model* m, const model_training_desc* training_desc);
 f32 model_evaluate(
     model* m, matrix* test_images,
