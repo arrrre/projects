@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "model.h"
+#include "prng.h"
 
 model* model_create(mem_arena* arena, u32 max_layers) {
     model* m = PUSH_STRUCT(arena, model);
@@ -149,6 +150,32 @@ void get_batch(matrix* dst, matrix* src, u32 batch_idx, u32 batch_size) {
            batch_size * elements_per_row * sizeof(f32));
 }
 
+void get_batch_shuffled(
+    matrix* dst, matrix* src,
+    u32* training_order, 
+    u32 batch_idx, u32 batch_size
+) {
+    u32 start_idx = batch_idx * batch_size;
+    
+    for (u32 i = 0; i < batch_size; i++) {
+        u32 original_row = training_order[start_idx + i];
+        
+        memcpy(&dst->data[i * src->cols], 
+               &src->data[original_row * src->cols], 
+               src->cols * sizeof(f32));
+    }
+}
+
+void shuffle_array(u32* array, u32 n) {
+    for (u32 i = n - 1; i > 0; i--) {
+        u32 j = prng_rand() % (i + 1);
+        
+        u32 tmp = array[i];
+        array[i] = array[j];
+        array[j] = tmp;
+    }
+}
+
 void model_train(model* m, const model_training_desc* training_desc) {
     matrix* train_images = training_desc->train_images;
     matrix* train_labels = training_desc->train_labels;
@@ -170,12 +197,19 @@ void model_train(model* m, const model_training_desc* training_desc) {
     matrix* y = mat_create(scratch.arena, batch_size, output_size);
     matrix* loss_grad = mat_create(scratch.arena, batch_size, output_size);
 
+    u32* training_order = PUSH_ARRAY_NZ(scratch.arena, u32, num_examples);
+    for (u32 i = 0; i < num_examples; i++) {
+        training_order[i] = i;
+    }
+
     for (u32 epoch = 0; epoch < training_desc->epochs; epoch++) {
+        shuffle_array(training_order, num_examples);
+
         f32 epoch_loss = 0.0f;
 
         for (u32 batch = 0; batch < num_batches; batch++) {
-            get_batch(x, train_images, batch, batch_size);
-            get_batch(y, train_labels, batch, batch_size);
+            get_batch_shuffled(x, train_images, training_order, batch, batch_size);
+            get_batch_shuffled(y, train_labels, training_order, batch, batch_size);
 
             matrix* pred = model_forward(m, x);
 
