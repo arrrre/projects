@@ -152,7 +152,7 @@ b32 mat_add(matrix* out, const matrix* a, const matrix* b) {
         out->data[i] = a->data[i] + b->data[i];
     }
 
-    return false;
+    return true;
 }
 
 b32 mat_sub(matrix* out, const matrix* a, const matrix* b) {
@@ -164,7 +164,7 @@ b32 mat_sub(matrix* out, const matrix* a, const matrix* b) {
         out->data[i] = a->data[i] - b->data[i];
     }
 
-    return false;
+    return true;
 }
 
 void _mat_mul_nn(matrix* out, const matrix* a, const matrix* b) {
@@ -235,6 +235,18 @@ b32 mat_mul(
         case 0b01: { _mat_mul_nt(out, a, b); } break;
         case 0b10: { _mat_mul_tn(out, a, b); } break;
         case 0b11: { _mat_mul_tt(out, a, b); } break;
+    }
+
+    return true;
+}
+
+b32 mat_mul_ew(matrix* out, const matrix* a, const matrix* b) {
+    if (a->rows != b->rows || a->cols != b->cols) { return false; }
+    if (out->rows != a->rows || out->cols != a->cols) { return false; }
+
+    u64 size = (u64)out->rows * out->cols;
+    for (u64 i = 0; i < size; i++) {
+        out->data[i] = a->data[i] * b->data[i];
     }
 
     return true;

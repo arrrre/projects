@@ -29,6 +29,7 @@ b32 mat_mul(
     matrix* out, const matrix* a, const matrix* b,
     b8 zero_out, b8 transpose_a, b8 transpose_b
 );
+b32 mat_mul_ew(matrix* out, const matrix* a, const matrix* b);
 b32 mat_relu(matrix* out, const matrix* in);
 b32 mat_softmax(matrix* out, const matrix* in);
 f32 mat_cross_entropy(const matrix* p, const matrix* q);
