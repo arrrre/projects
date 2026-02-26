@@ -14,14 +14,14 @@ typedef enum {
 typedef struct {
     layer_type type;
     
-    matrix* weights;
-    matrix* bias;
-    matrix* d_weights;
-    matrix* d_bias;
+    matrix* W;
+    matrix* dW;
+    matrix* b;
+    matrix* db;
 
-    matrix* last_input;
-    matrix* last_output;
-    matrix* d_input;
+    matrix* X;
+    matrix* dX;
+    matrix* Y;
 } model_layer;
 
 typedef struct {

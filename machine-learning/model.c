@@ -36,8 +36,8 @@ model* model_load(mem_arena* arena, const char* filename, u32 batch_size) {
 
             model_add_layer(arena, m, type, rows, cols, batch_size);
             
-            fread(m->layers[i]->weights->data, sizeof(f32), rows * cols, f);
-            fread(m->layers[i]->bias->data, sizeof(f32), 1 * cols, f);
+            fread(m->layers[i]->W->data, sizeof(f32), rows * cols, f);
+            fread(m->layers[i]->b->data, sizeof(f32), 1 * cols, f);
             
             current_in_size = cols;
         } else {
@@ -61,11 +61,11 @@ void model_save(model* m, const char* filename) {
         fwrite(&l->type, sizeof(layer_type), 1, f);
 
         if (l->type == LAYER_LINEAR) {
-            fwrite(&l->weights->rows, sizeof(u32), 1, f);
-            fwrite(&l->weights->cols, sizeof(u32), 1, f);
+            fwrite(&l->W->rows, sizeof(u32), 1, f);
+            fwrite(&l->W->cols, sizeof(u32), 1, f);
             
-            fwrite(l->weights->data, sizeof(f32), l->weights->rows * l->weights->cols, f);
-            fwrite(l->bias->data, sizeof(f32), l->bias->rows * l->bias->cols, f);
+            fwrite(l->W->data, sizeof(f32), l->W->rows * l->W->cols, f);
+            fwrite(l->b->data, sizeof(f32), l->b->rows * l->b->cols, f);
         }
     }
     fclose(f);
@@ -80,19 +80,19 @@ b32 model_add_layer(
     model_layer* layer = PUSH_STRUCT(arena, model_layer);
     layer->type = type;
 
-    layer->last_input  = mat_create(arena, batch_size, in_size);
-    layer->last_output = mat_create(arena, batch_size, out_size);
-    layer->d_input     = mat_create(arena, batch_size, in_size);
+    layer->X  = mat_create(arena, batch_size, in_size);
+    layer->dX = mat_create(arena, batch_size, in_size);
+    layer->Y  = mat_create(arena, batch_size, out_size);
 
     if (type == LAYER_LINEAR) {
-        layer->weights   = mat_create(arena, in_size, out_size);
-        layer->d_weights = mat_create(arena, in_size, out_size);
+        layer->W  = mat_create(arena, in_size, out_size);
+        layer->dW = mat_create(arena, in_size, out_size);
 
-        layer->bias      = mat_create(arena, 1, out_size);
-        layer->d_bias    = mat_create(arena, 1, out_size);
+        layer->b  = mat_create(arena, 1, out_size);
+        layer->db = mat_create(arena, 1, out_size);
     } else {
-        layer->weights = layer->d_weights = NULL;
-        layer->bias    = layer->d_bias    = NULL;
+        layer->W = layer->dW = NULL;
+        layer->b = layer->db = NULL;
     }
 
     m->layers[m->num_layers++] = layer;
@@ -105,60 +105,60 @@ void model_init_weights(model* m) {
         model_layer* layer = m->layers[i];
 
         if (layer->type == LAYER_LINEAR) {
-            u32 n_in = layer->weights->rows;
-            u32 n_out = layer->weights->cols;
+            u32 n_in = layer->W->rows;
+            u32 n_out = layer->W->cols;
 
             f32 bound = sqrtf(6.0f / (f32)(n_in + n_out));
 
-            mat_fill_rand(layer->weights, -bound, bound);
+            mat_fill_rand(layer->W, -bound, bound);
 
-            mat_clear(layer->bias);
+            mat_clear(layer->b);
         }
     }
 }
 
-matrix* layer_forward(model_layer* layer, matrix* input) {
-    mat_copy(layer->last_input, input);
+matrix* layer_forward(model_layer* layer, matrix* X) {
+    mat_copy(layer->X, X);
 
     switch (layer->type) {
         case LAYER_LINEAR:
             // Y = XW + b
-            mat_mul(layer->last_output, input, layer->weights, 1, 0, 0);
-            mat_add(layer->last_output, layer->last_output, layer->bias);
+            mat_mul(layer->Y, X, layer->W, 1, 0, 0);
+            mat_add(layer->Y, layer->Y, layer->b);
             break;
 
         case LAYER_RELU:
             // Y = max(0, X)
-            mat_relu(layer->last_output, input);
+            mat_relu(layer->Y, X);
             break;
 
         case LAYER_SOFTMAX:
-            mat_softmax(layer->last_output, input);
+            mat_softmax(layer->Y, X);
             break;
     }
 
-    return layer->last_output;
+    return layer->Y;
 }
 
 matrix* layer_backward(model_layer* layer, matrix* grad_out) {
-    matrix* grad_in = layer->d_input;
+    matrix* grad_in = layer->dX;
 
     switch (layer->type) {
         case LAYER_LINEAR:
             // dW = X^T * grad_out
-            mat_mul(layer->d_weights, layer->last_input, grad_out, 1, 1, 0);
+            mat_mul(layer->dW, layer->X, grad_out, 1, 1, 0);
             
             // dB = sum(grad_out) over rows
-            mat_sum_cols(layer->d_bias, grad_out, 1);
+            mat_sum_cols(layer->db, grad_out, 1);
 
             // dX (grad_in) = grad_out * W^T
-            mat_mul(grad_in, grad_out, layer->weights, 1, 0, 1);
+            mat_mul(grad_in, grad_out, layer->W, 1, 0, 1);
             break;
 
         case LAYER_RELU:
             // dR = grad_out * (1 if x > 0, else 0)
             mat_clear(grad_in);
-            mat_relu_add_grad(grad_in, layer->last_input, grad_out);
+            mat_relu_add_grad(grad_in, layer->X, grad_out);
             break;
             
         case LAYER_SOFTMAX:
@@ -172,12 +172,12 @@ matrix* layer_backward(model_layer* layer, matrix* grad_out) {
 void layer_update(model_layer* layer, f32 lr) {
     if (layer->type == LAYER_LINEAR) {
         // W = W - learning_rate * dW
-        mat_scale(layer->d_weights, lr);
-        mat_sub(layer->weights, layer->weights, layer->d_weights);
+        mat_scale(layer->dW, lr);
+        mat_sub(layer->W, layer->W, layer->dW);
 
         // b = b - learning_rate * db
-        mat_scale(layer->d_bias, lr);
-        mat_sub(layer->bias, layer->bias, layer->d_bias);
+        mat_scale(layer->db, lr);
+        mat_sub(layer->b, layer->b, layer->db);
     }
 }
 
