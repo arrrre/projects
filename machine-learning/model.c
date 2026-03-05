@@ -14,85 +14,37 @@ model* model_create(mem_arena* arena, u32 max_layers) {
     return m;
 }
 
-model* model_load(mem_arena* arena, const char* filename, u32 batch_size) {
-    FILE* f = fopen(filename, "rb");
-    if (!f) { return NULL; }
-
-    u32 num_layers;
-    fread(&num_layers, sizeof(u32), 1, f);
-
-    model* m = model_create(arena, num_layers);
-    
-    u32 current_in_size = 0; 
-
-    for (u32 i = 0; i < num_layers; i++) {
-        layer_type type;
-        fread(&type, sizeof(layer_type), 1, f);
-
-        if (type == LAYER_LINEAR) {
-            u32 rows, cols;
-            fread(&rows, sizeof(u32), 1, f);
-            fread(&cols, sizeof(u32), 1, f);
-
-            model_add_layer(arena, m, type, rows, cols, batch_size);
-            
-            fread(m->layers[i]->W->data, sizeof(f32), rows * cols, f);
-            fread(m->layers[i]->b->data, sizeof(f32), 1 * cols, f);
-            
-            current_in_size = cols;
-        } else {
-            model_add_layer(arena, m, type, current_in_size, current_in_size, batch_size);
-        }
-    }
-
-    fclose(f);
-    return m;
-}
-
-void model_save(model* m, const char* filename) {
-    FILE* f = fopen(filename, "wb");
-    if (!f) { return; }
-
-    fwrite(&m->num_layers, sizeof(u32), 1, f);
-
-    for (u32 i = 0; i < m->num_layers; i++) {
-        model_layer* l = m->layers[i];
-
-        fwrite(&l->type, sizeof(layer_type), 1, f);
-
-        if (l->type == LAYER_LINEAR) {
-            fwrite(&l->W->rows, sizeof(u32), 1, f);
-            fwrite(&l->W->cols, sizeof(u32), 1, f);
-            
-            fwrite(l->W->data, sizeof(f32), l->W->rows * l->W->cols, f);
-            fwrite(l->b->data, sizeof(f32), l->b->rows * l->b->cols, f);
-        }
-    }
-    fclose(f);
-}
-
 b32 model_add_layer(
-    mem_arena* arena, model* m, layer_type type,
-    u32 in_size, u32 out_size, u32 batch_size
+    mem_arena* arena, model* m, model_layer_type layer_type,
+    model_layer_activation_type activation_type,
+    u32 in_size, u32 out_size, u32 batch_size, f32 dropout_rate
 ) {
     if (m->num_layers >= m->max_layers) { return false; }
 
     model_layer* layer = PUSH_STRUCT(arena, model_layer);
-    layer->type = type;
+    layer->layer_type = layer_type;
+    layer->activation_type = activation_type;
+    layer->dropout_rate = dropout_rate;
 
     layer->X  = mat_create(arena, batch_size, in_size);
     layer->dX = mat_create(arena, batch_size, in_size);
+    layer->Z  = mat_create(arena, batch_size, out_size);
+    layer->dZ = mat_create(arena, batch_size, out_size);
     layer->Y  = mat_create(arena, batch_size, out_size);
 
-    if (type == LAYER_LINEAR) {
+    if (layer_type == LAYER_LINEAR) {
         layer->W  = mat_create(arena, in_size, out_size);
         layer->dW = mat_create(arena, in_size, out_size);
 
         layer->b  = mat_create(arena, 1, out_size);
         layer->db = mat_create(arena, 1, out_size);
-    } else {
+
+        layer->dropout_mask = NULL;
+    } else if (layer_type == LAYER_DROPOUT) {
         layer->W = layer->dW = NULL;
         layer->b = layer->db = NULL;
+
+        layer->dropout_mask = mat_create(arena, batch_size, in_size);
     }
 
     m->layers[m->num_layers++] = layer;
@@ -104,12 +56,18 @@ void model_init_weights(model* m) {
     for (u32 i = 0; i < m->num_layers; i++) {
         model_layer* layer = m->layers[i];
 
-        if (layer->type == LAYER_LINEAR) {
+        if (layer->layer_type == LAYER_LINEAR) {
             u32 n_in = layer->W->rows;
-            u32 n_out = layer->W->cols;
+            f32 std;
 
-            f32 bound = sqrtf(6.0f / (f32)(n_in + n_out));
+            if (layer->activation_type == ACT_RELU) {
+                std = sqrtf(2.0f / (f32)n_in);
+            } else {
+                u32 n_out = layer->W->cols;
+                std = sqrtf(2.0f / (f32)(n_in + n_out));
+            }
 
+            f32 bound = std * sqrtf(3.0f);
             mat_fill_rand(layer->W, -bound, bound);
 
             mat_clear(layer->b);
@@ -117,60 +75,68 @@ void model_init_weights(model* m) {
     }
 }
 
-matrix* layer_forward(model_layer* layer, matrix* X) {
-    mat_copy(layer->X, X);
+matrix* layer_forward(model_layer* layer, matrix* input, b32 is_training) {
+    mat_copy(layer->X, input);
 
-    switch (layer->type) {
-        case LAYER_LINEAR:
-            // Y = XW + b
-            mat_mul(layer->Y, X, layer->W, 1, 0, 0);
-            mat_add(layer->Y, layer->Y, layer->b);
-            break;
+    if (layer->layer_type == LAYER_LINEAR) {
+        // Z = X * W + b
+        mat_mul(layer->Z, layer->X, layer->W, 1, 0, 0);
+        mat_add(layer->Z, layer->Z, layer->b);
 
-        case LAYER_RELU:
-            // Y = max(0, X)
-            mat_relu(layer->Y, X);
-            break;
-
-        case LAYER_SOFTMAX:
-            mat_softmax(layer->Y, X);
-            break;
+        // Y = f(Z)
+        switch (layer->activation_type) {
+            case ACT_RELU:    mat_relu(layer->Y, layer->Z); break;
+            case ACT_SOFTMAX: mat_softmax(layer->Y, layer->Z); break;
+            case ACT_NONE:    mat_copy(layer->Y, layer->Z); break;
+        }
+    } else if (layer->layer_type == LAYER_DROPOUT) {
+        if (is_training) {
+            f32 scale = 1.0f / (1.0f - layer->dropout_rate);
+            for (u32 i = 0; i < input->rows * input->cols; i++) {
+                f32 r = prng_randf(); 
+                if (r < layer->dropout_rate) {
+                    layer->dropout_mask->data[i] = 0.0f;
+                    layer->Y->data[i] = 0.0f;
+                } else {
+                    layer->dropout_mask->data[i] = scale;
+                    layer->Y->data[i] = input->data[i] * scale;
+                }
+            }
+        } else {
+            mat_copy(layer->Y, input);
+        }
     }
 
     return layer->Y;
 }
 
 matrix* layer_backward(model_layer* layer, matrix* grad_out) {
-    matrix* grad_in = layer->dX;
-
-    switch (layer->type) {
-        case LAYER_LINEAR:
-            // dW = X^T * grad_out
-            mat_mul(layer->dW, layer->X, grad_out, 1, 1, 0);
-            
-            // dB = sum(grad_out) over rows
-            mat_sum_cols(layer->db, grad_out, 1);
-
-            // dX (grad_in) = grad_out * W^T
-            mat_mul(grad_in, grad_out, layer->W, 1, 0, 1);
-            break;
-
-        case LAYER_RELU:
-            // dR = grad_out * (1 if x > 0, else 0)
-            mat_clear(grad_in);
-            mat_relu_add_grad(grad_in, layer->X, grad_out);
-            break;
-            
-        case LAYER_SOFTMAX:
-            mat_copy(grad_in, grad_out);
-            break;
+    if (layer->layer_type == LAYER_LINEAR) {
+        switch (layer->activation_type) {
+            case ACT_RELU:
+                mat_clear(layer->dZ);
+                mat_relu_add_grad(layer->dZ, layer->Z, grad_out); 
+                break;
+            case ACT_SOFTMAX:
+            case ACT_NONE:
+                mat_copy(layer->dZ, grad_out);
+                break;
+        }
+        // dW = X^T * dZ
+        mat_mul(layer->dW, layer->X, layer->dZ, 1, 1, 0);    
+        // db = sum(dZ) over rows
+        mat_sum_cols(layer->db, layer->dZ, 1);
+        // dX (grad_in for next layer) = dZ * W^T
+        mat_mul(layer->dX, layer->dZ, layer->W, 1, 0, 1);
+    } else if (layer->layer_type == LAYER_DROPOUT) {
+        mat_mul_ew(layer->dX, grad_out, layer->dropout_mask);
     }
 
-    return grad_in;
+    return layer->dX;
 }
 
 void layer_update(model_layer* layer, f32 lr) {
-    if (layer->type == LAYER_LINEAR) {
+    if (layer->layer_type == LAYER_LINEAR) {
         // W = W - learning_rate * dW
         mat_scale(layer->dW, lr);
         mat_sub(layer->W, layer->W, layer->dW);
@@ -181,11 +147,11 @@ void layer_update(model_layer* layer, f32 lr) {
     }
 }
 
-matrix* model_forward(model* m, matrix* input) {
+matrix* model_forward(model* m, matrix* input, b32 is_training) {
     matrix* current_input = input;
 
     for (u32 i = 0; i < m->num_layers; i++) {
-        current_input = layer_forward(m->layers[i], current_input);
+        current_input = layer_forward(m->layers[i], current_input, is_training);
     }
     
     return current_input;
@@ -274,7 +240,7 @@ void model_train(model* m, const model_training_desc* training_desc) {
             get_batch_shuffled(x, train_images, training_order, batch, batch_size);
             get_batch_shuffled(y, train_labels, training_order, batch, batch_size);
 
-            matrix* pred = model_forward(m, x);
+            matrix* pred = model_forward(m, x, true);
 
             epoch_loss += mat_cross_entropy(y, pred);
 
@@ -316,7 +282,7 @@ f32 model_evaluate(model* m, matrix* test_images, matrix* test_labels, u32 batch
         get_batch(x, test_images, batch, batch_size); 
         get_batch(y, test_labels, batch, batch_size);
 
-        matrix* pred = model_forward(m, x);
+        matrix* pred = model_forward(m, x, false);
 
         for (u32 i = 0; i < batch_size; i++) {
             num_correct += mat_argmax_row(pred, i) == mat_argmax_row(y, i);
@@ -334,7 +300,7 @@ f32 model_evaluate(model* m, matrix* test_images, matrix* test_labels, u32 batch
 }
 
 u32 model_predict(model* m, matrix* image) {
-    matrix* pred = model_forward(m, image);
+    matrix* pred = model_forward(m, image, false);
 
     return mat_argmax_row(pred, 0);
 }

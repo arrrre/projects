@@ -6,22 +6,29 @@
 #include "matrix.h"
 
 typedef enum {
+    ACT_NONE,
+    ACT_RELU,
+    ACT_SOFTMAX,
+} model_layer_activation_type;
+
+typedef enum {
     LAYER_LINEAR,
-    LAYER_RELU,
-    LAYER_SOFTMAX,
-} layer_type;
+    LAYER_DROPOUT,
+} model_layer_type;
 
 typedef struct {
-    layer_type type;
+    model_layer_type layer_type;
+    model_layer_activation_type activation_type;
     
-    matrix* W;
-    matrix* dW;
-    matrix* b;
-    matrix* db;
+    matrix* W; matrix* dW;
+    matrix* b; matrix* db;
 
-    matrix* X;
-    matrix* dX;
+    matrix* X; matrix* dX;
+    matrix* Z; matrix* dZ;
     matrix* Y;
+
+    f32 dropout_rate;
+    matrix* dropout_mask;
 } model_layer;
 
 typedef struct {
@@ -42,11 +49,10 @@ typedef struct {
 } model_training_desc;
 
 model* model_create(mem_arena* arena, u32 max_layers);
-model* model_load(mem_arena* arena, const char* filename, u32 batch_size);
-void model_save(model* m, const char* filename);
 b32 model_add_layer(
-    mem_arena* arena, model* m, layer_type type,
-    u32 in_size, u32 out_size, u32 batch_size
+    mem_arena* arena, model* m, model_layer_type layer_type,
+    model_layer_activation_type activation_type,
+    u32 in_size, u32 out_size, u32 batch_size, f32 dropout_rate
 );
 void model_train(model* m, const model_training_desc* training_desc);
 f32 model_evaluate(

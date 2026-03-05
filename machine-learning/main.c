@@ -1,9 +1,11 @@
 #include <stdio.h>
+#include <time.h>
 
 #include "base.h"
 #include "arena.h"
 #include "matrix.h"
 #include "model.h"
+#include "prng.h"
 
 void create_mnist_model(
     mem_arena* arena, model* model,
@@ -16,6 +18,8 @@ void predict_mnist_digit(
 );
 
 int main(void) {
+    prng_seed(time(NULL), 42);
+
     mem_arena* perm_arena = arena_create(GiB(1), MiB(1));
 
     const u32 TRAIN_COUNT  = 60000;
@@ -72,12 +76,9 @@ int main(void) {
 
     // Test on an image
     predict_mnist_digit(
-        m, &test_images->data[12 * test_images->cols],
+        m, &test_images->data[32 * test_images->cols],
         test_images->cols, IMAGE_WIDTH, IMAGE_HEIGHT
     );
-
-    const char* filename = "data/model.bin";
-    model_save(m, filename);
 
     arena_destroy(perm_arena);
 
@@ -90,15 +91,11 @@ void create_mnist_model(
 ) {
     u32 hidden1 = 128;
     u32 hidden2 = 64;
-
-    model_add_layer(arena, m, LAYER_LINEAR, image_size, hidden1, batch_size);
-    model_add_layer(arena, m, LAYER_RELU,   hidden1,    hidden1, batch_size);
-    
-    model_add_layer(arena, m, LAYER_LINEAR, hidden1,    hidden2, batch_size);
-    model_add_layer(arena, m, LAYER_RELU,   hidden2,    hidden2, batch_size);
-
-    model_add_layer(arena, m, LAYER_LINEAR, hidden2,    label_count, batch_size);
-    model_add_layer(arena, m, LAYER_SOFTMAX, label_count, label_count, batch_size);
+    model_add_layer(arena, m, LAYER_LINEAR, ACT_RELU, image_size, hidden1, batch_size, 0.0f);
+    model_add_layer(arena, m, LAYER_DROPOUT, ACT_NONE, hidden1, hidden1, batch_size, 0.2f);
+    model_add_layer(arena, m, LAYER_LINEAR, ACT_RELU, hidden1, hidden2, batch_size, 0.0f);
+    model_add_layer(arena, m, LAYER_DROPOUT, ACT_NONE, hidden2, hidden2, batch_size, 0.2f);
+    model_add_layer(arena, m, LAYER_LINEAR, ACT_SOFTMAX, hidden2, label_count, batch_size, 0.0f);
 }
 
 void draw_mnist_digit(f32* data, u32 width, u32 height) {
