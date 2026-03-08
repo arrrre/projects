@@ -6,8 +6,8 @@
 #include "minheap.h"
 #include "huffnode.h"
 
-// ./main compress test/test.txt test/test_comp.txt
-// ./main decompress test/test_comp.txt test/test_decomp.txt
+// ./main -c test/test.txt test/test_comp.txt
+// ./main -d test/test_comp.txt test/test_decomp.txt
 
 #define ASCII_UNIQUE 256
 #define HEADER_MAGIC 0x46465548 // Hex for "HUFF"
@@ -88,18 +88,18 @@ int main(int argc, char** argv) {
     const char* filename_in = argv[2];
     const char* filename_out = argv[3];
 
-    if (strcmp(mode, "compress") == 0) {
+    if (strcmp(mode, "-c") == 0) {
         string8* s = string_read(perm_arena, filename_in);
         string8* cs = compress(perm_arena, s);
         string_write(filename_out, cs);
 
         printf("%lld bytes -> %lld bytes (%.1f%%)\n", s->size, cs->size,
             (1.0f - (f32)cs->size / s->size) * 100.0f);
-    } else if (strcmp(mode, "decompress") == 0) {
+    } else if (strcmp(mode, "-d") == 0) {
         string8* cs = string_read(perm_arena, filename_in);
         string8* s = decompress(perm_arena, cs);
         string_write(filename_out, s);
-    } else if (strcmp(mode, "test") == 0 ) {
+    } else if (strcmp(mode, "-t") == 0 ) {
         string8* s1 = string_read(perm_arena, filename_in);
         string8* cs1 = compress(perm_arena, s1);
         string_write(filename_out, cs1);
@@ -107,10 +107,10 @@ int main(int argc, char** argv) {
         string8* s2 = decompress(perm_arena, cs2);
         string_write(filename_out, s2);
 
-        if (strcmp((char*)s1->str, (char*)s2->str) == 0) {
+        if (s1->size == s2->size && memcmp(s1->str, s2->str, s1->size) == 0) {
             printf("Passed\n");
         } else {
-            printf("Failed\n");
+            printf("Failed (Size mismatch or data corruption)\n");
         }
     } else {
         printf("Unknown mode: %s\n", mode);
