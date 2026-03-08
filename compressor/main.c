@@ -44,15 +44,29 @@ typedef struct {
 typedef struct {
     u32 magic;
     u64 original_size;
-    u32 counts[ASCII_UNIQUE];
+    u16 unique_chars;
 } huff_header;
 #pragma pack(pop)
+
+typedef struct {
+    u8* file_start;
+    u8* data_start;
+} header_write_buffer;
+
+typedef struct {
+    huff_node* root;
+    u64 original_size;
+    u8* data_start;
+} header_read_buffer;
 
 string8* string_read(mem_arena* arena, const char* filename);
 void string_write(const char* filename, string8* s);
 
 string8* compress(mem_arena* arena, string8* s);
 string8* decompress(mem_arena* arena, string8* s);
+
+header_write_buffer write_header(mem_arena* arena, u64 original_size, u32* counts);
+header_read_buffer read_header(mem_arena* arena, string8* s);
 
 void generate_codes(
     mem_arena* arena, code_table* table,
@@ -144,11 +158,10 @@ void string_write(const char* filename, string8* s) {
 }
 
 string8* compress(mem_arena* arena, string8* s) {
-    u32* occurences = PUSH_ARRAY(arena, u32, ASCII_UNIQUE);
+    u32 counts[ASCII_UNIQUE] = {0};
+    for (u64 i = 0; i < s->size; i++) { counts[s->str[i]]++; }
 
-    for (u64 i = 0; i < s->size; i++) { occurences[s->str[i]]++; }
-
-    min_heap* heap = heapify(arena, occurences, ASCII_UNIQUE);
+    min_heap* heap = heapify(arena, counts, ASCII_UNIQUE);
     huff_node* root = treeify(arena, heap);
 
     code_table* table = PUSH_STRUCT(arena, code_table);
@@ -158,52 +171,37 @@ string8* compress(mem_arena* arena, string8* s) {
     char path_buffer[ASCII_UNIQUE];
     generate_codes(arena, table, root, path_buffer, 0);
 
-    u64 header_size = sizeof(huff_header);
-    u64 max_data_size = s->size;
-    
-    u8* buffer = PUSH_ARRAY(arena, u8, header_size + max_data_size);
-    
-    huff_header* header = (huff_header*)buffer;
-    header->magic = HEADER_MAGIC;
-    header->original_size = s->size;
-    memcpy(header->counts, occurences, sizeof(u32) * 256);
+    header_write_buffer hb = write_header(arena, s->size, counts);
 
     bit_writer bw = {0};
-    bw.data = buffer + header_size;
+    bw.data = hb.data_start;
     bw.data[0] = 0;
-    bw.bit_idx = 0;
-    bw.byte_idx = 0;
 
     for (u64 i = 0; i < s->size; i++) {
-        string8* bits = &table->codes[s->str[i]].bits;
-        write_bits(&bw, bits);
+        write_bits(&bw, &table->codes[s->str[i]].bits);
     }
 
-    u64 compressed_data_len = bw.byte_idx + (bw.bit_idx > 0 ? 1 : 0);
+    u64 bit_data_len = bw.byte_idx + (bw.bit_idx > 0 ? 1 : 0);
+    
     string8* result = PUSH_STRUCT(arena, string8);
-    result->str = buffer;
-    result->size = header_size + compressed_data_len;
+    result->str = hb.file_start;
+    result->size = (u64)(hb.data_start - hb.file_start) + bit_data_len;
 
     return result;
 }
 
 string8* decompress(mem_arena* arena, string8* s) {
-    huff_header* header = (huff_header*)s->str;
-    if (header->magic != HEADER_MAGIC) { return NULL; }
-
-    min_heap* heap = heapify(arena, header->counts, ASCII_UNIQUE);
-    huff_node* root = treeify(arena, heap);
-
-    string8* result = PUSH_STRUCT(arena, string8);
-    result->size = header->original_size;
-    result->str = PUSH_ARRAY(arena, u8, result->size);
+    header_read_buffer hb = read_header(arena, s);
 
     bit_reader br = {0};
-    br.data = s->str + sizeof(huff_header);
+    br.data = hb.data_start;
+    string8* result = PUSH_STRUCT(arena, string8);
+    result->size = hb.original_size;
+    result->str = PUSH_ARRAY(arena, u8, result->size);
 
     for (u64 i = 0; i < result->size; i++) {
-        huff_node* node = root;
-        
+        huff_node* node = hb.root;
+
         while (node->left != NULL || node->right != NULL) {
             u8 bit = read_bit(&br);
             node = (bit == 0) ? node->left : node->right;
@@ -213,6 +211,59 @@ string8* decompress(mem_arena* arena, string8* s) {
     }
 
     return result;
+}
+
+header_write_buffer write_header(mem_arena* arena, u64 original_size, u32* counts) {
+    u16 unique_count = 0;
+    for (int i = 0; i < ASCII_UNIQUE; i++) {
+        if (counts[i] > 0) { unique_count++; }
+    }
+
+    u64 header_full_size = sizeof(huff_header) + (unique_count * 5);
+    u8* buffer = PUSH_ARRAY(arena, u8, header_full_size + original_size);
+
+    huff_header* header = (huff_header*)buffer;
+    header->magic = HEADER_MAGIC;
+    header->original_size = original_size;
+    header->unique_chars = unique_count;
+
+    u8* cursor = buffer + sizeof(huff_header);
+
+    for (int i = 0; i < ASCII_UNIQUE; i++) {
+        if (counts[i] > 0) {
+            *cursor++ = (u8)i;
+            *(u32*)cursor = counts[i];
+            cursor += sizeof(u32);
+        }
+    }
+
+    return (header_write_buffer){ .file_start = buffer, .data_start = cursor };
+}
+
+header_read_buffer read_header(mem_arena* arena, string8* s) {
+    u8* cursor = s->str;
+
+    huff_header* header = (huff_header*)cursor;
+    cursor += sizeof(huff_header);
+
+    u32 counts[ASCII_UNIQUE] = {0};
+    for (u16 i = 0; i < header->unique_chars; i++) {
+        u8 character = *cursor;
+        cursor++;
+        u32 count = *(u32*)cursor;
+        cursor += sizeof(u32);
+
+        counts[character] = count;
+    }
+
+    min_heap* heap = heapify(arena, counts, ASCII_UNIQUE);
+    huff_node* root = treeify(arena, heap);
+
+    return (header_read_buffer) {
+        .root = root,
+        .original_size = header->original_size,
+        .data_start = cursor
+    };
 }
 
 void generate_codes(
