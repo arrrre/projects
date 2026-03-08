@@ -1,13 +1,15 @@
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "base.h"
 #include "arena.h"
+#include "minheap.h"
+#include "huffnode.h"
 
 // ./main compress test/test.txt test/test_comp.txt
 // ./main decompress test/test_comp.txt test/test_decomp.txt
+
+#define ASCII_UNIQUE 256
 
 typedef struct {
     u8* str;
@@ -16,15 +18,6 @@ typedef struct {
 
 #define STR8_LIT(s) (string8){ (u8*)(s), sizeof(s) - 1 }
 #define STR8_FMT(s) (int)(s).size, (char*)(s).str
-
-typedef struct list_node {
-    u8 value;
-    u32 occs;
-    struct list_node* next;
-    struct list_node* prev;
-    struct list_node* left;
-    struct list_node* right;
-} list_node;
 
 typedef struct {
     string8 bits;
@@ -40,6 +33,20 @@ typedef struct {
     i32 bit_idx;
 } bit_writer;
 
+typedef struct {
+    u8* data;
+    u64 byte_idx;
+    i32 bit_idx;
+} bit_reader;
+
+#pragma pack(push, 1)
+typedef struct {
+    u32 magic;
+    u64 original_size;
+    u32 counts[ASCII_UNIQUE];
+} huff_header;
+#pragma pack(pop)
+
 string8* string_read(mem_arena* arena, const char* filename);
 void string_write(const char* filename, string8* s);
 
@@ -48,16 +55,16 @@ string8* decompress(mem_arena* arena, string8* s);
 
 void generate_codes(
     mem_arena* arena, code_table* table,
-    list_node* node, char* path, i32 depth
+    huff_node* node, char* path, i32 depth
 );
-void write_code(bit_writer* bw, string8* bits);
 
-void print_tree(list_node* ln, u32 level);
+void write_bits(bit_writer* bw, string8* bits);
+u8 read_bit(bit_reader* br);
 
 int main(int argc, char** argv) {
     if (argc < 4) {
         printf("Usage: ./main (de)compress <input_file> <output_file>\n");
-        exit(1);
+        return 1;
     }
 
     mem_arena* perm_arena = arena_create(GiB(1), MiB(1));
@@ -67,25 +74,29 @@ int main(int argc, char** argv) {
     const char* filename_out = argv[3];
 
     if (strcmp(mode, "compress") == 0) {
-        printf("Compression of %s into %s started\n", filename_in, filename_out);
-
         string8* s = string_read(perm_arena, filename_in);
-
         string8* cs = compress(perm_arena, s);
-
         string_write(filename_out, cs);
 
-        printf("Compression finished\n");
+        printf("%lld bytes -> %lld bytes (%.1f%%)\n", s->size, cs->size,
+            (1.0f - (f32)cs->size / s->size) * 100.0f);
     } else if (strcmp(mode, "decompress") == 0) {
-        printf("Decompression of %s into %s started\n", filename_in, filename_out);
+        string8* cs = string_read(perm_arena, filename_in);
+        string8* s = decompress(perm_arena, cs);
+        string_write(filename_out, s);
+    } else if (strcmp(mode, "test") == 0 ) {
+        string8* s1 = string_read(perm_arena, filename_in);
+        string8* cs1 = compress(perm_arena, s1);
+        string_write(filename_out, cs1);
+        string8* cs2 = string_read(perm_arena, filename_out);
+        string8* s2 = decompress(perm_arena, cs2);
+        string_write(filename_out, s2);
 
-        string8* s = string_read(perm_arena, filename_in);
-
-        string8* cs = decompress(perm_arena, s);
-
-        string_write(filename_out, cs);
-
-        printf("Decompression finished\n");
+        if (strcmp((char*)s1->str, (char*)s2->str) == 0) {
+            printf("Passed\n");
+        } else {
+            printf("Failed\n");
+        }
     } else {
         printf("Unknown mode: %s\n", mode);
     }
@@ -96,7 +107,8 @@ int main(int argc, char** argv) {
 }
 
 string8* string_read(mem_arena* arena, const char* filename) {
-    FILE* f = fopen(filename, "r");
+    FILE* f = fopen(filename, "rb");
+    if (f == NULL) { return NULL; }
 
     fseek(f, 0, SEEK_END);
     u64 size = ftell(f);
@@ -106,126 +118,107 @@ string8* string_read(mem_arena* arena, const char* filename) {
     s->size = size;
     s->str = PUSH_ARRAY(arena, u8, size);
 
-    fread(s->str, 1, size, f);
+    size_t bytes_read = fread(s->str, 1, size, f);
+    
+    if (bytes_read != size) {
+        printf("Warning: Only read %zu of %llu bytes\n", bytes_read, s->size);
+        s->size = bytes_read;
+    }
 
     fclose(f);
-
     return s;
 }
 
 void string_write(const char* filename, string8* s) {
-    FILE* f = fopen(filename, "w");
+    FILE* f = fopen(filename, "wb");
+    if (f == NULL) { return; }
 
-    fprintf(f, (char*)s->str);
+    size_t bytes_written = fwrite(s->str, 1, s->size, f);
+
+    if (bytes_written != s->size) {
+        printf("Warning: Only wrote %zu of %llu bytes\n", bytes_written, s->size);
+    }
 
     fclose(f);
 }
 
 string8* compress(mem_arena* arena, string8* s) {
-    const u32 ASCII_UNIQUE = 256;
     u32* occurences = PUSH_ARRAY(arena, u32, ASCII_UNIQUE);
 
     for (u64 i = 0; i < s->size; i++) { occurences[s->str[i]]++; }
 
-    list_node* head = PUSH_STRUCT(arena, list_node);
-    head->next = head->prev = NULL;
-    list_node* tail = head;
-
-    u32 unique = 0;
-    for (u32 i = 0; i < ASCII_UNIQUE; i++) {
-        u32 max_i = 0;
-        for (u32 j = 0; j < ASCII_UNIQUE; j++) {
-            if (occurences[j] > occurences[max_i]) { max_i = j; }
-        }
-
-        u32 occs = occurences[max_i];
-        if (occs == 0) { break; }
-
-        occurences[max_i] = 0;
-        unique++;
-        
-        list_node* ln = PUSH_STRUCT(arena, list_node);
-        ln->value = max_i;
-        ln->occs = occs;
-        ln->next = NULL;
-        ln->prev = (struct list_node*)tail;
-        tail->next = (struct list_node*)ln;
-        tail = ln;
-    }
-
-    u32 nodes_left = unique;
-    while (nodes_left > 1) {
-        list_node* a = tail;
-        list_node* b = tail->prev;
-
-        tail = b->prev;
-        if (tail) { tail->next = NULL; }
-
-        list_node* parent = PUSH_STRUCT(arena, list_node);
-        parent->occs = a->occs + b->occs;
-        parent->left = a;
-        parent->right = b;
-
-        if (tail == NULL) {
-            tail = parent;
-            head = parent;
-        } else {
-            list_node* scan = head;
-            while (scan->next && scan->next->occs > parent->occs) {
-                scan = scan->next;
-            }
-
-            parent->next = scan->next;
-            parent->prev = scan;
-            if (scan->next) { scan->next->prev = parent; }
-            scan->next = parent;
-
-            if (parent->next == NULL) tail = parent;
-        }
-
-        nodes_left--;
-    }
-
-    list_node* root = (nodes_left == 1) ? tail : NULL;
-
-    // print_tree(root, 0);
+    min_heap* heap = heapify(arena, occurences, ASCII_UNIQUE);
+    huff_node* root = treeify(arena, heap);
 
     code_table* table = PUSH_STRUCT(arena, code_table);
-    table->codes = PUSH_ARRAY(arena, code, 256);
-    memset(table->codes, 0, sizeof(code) * 256);
-    
-    char path_buffer[256];
+    table->codes = PUSH_ARRAY(arena, code, ASCII_UNIQUE);
+    memset(table->codes, 0, sizeof(code) * ASCII_UNIQUE);
+
+    char path_buffer[ASCII_UNIQUE];
     generate_codes(arena, table, root, path_buffer, 0);
 
+    u64 header_size = sizeof(huff_header);
+    u64 max_data_size = s->size;
+    
+    u8* buffer = PUSH_ARRAY(arena, u8, header_size + max_data_size);
+    
+    huff_header* header = (huff_header*)buffer;
+    header->magic = 0x46465548;
+    header->original_size = s->size;
+    memcpy(header->counts, occurences, sizeof(u32) * 256);
+
     bit_writer bw = {0};
-    bw.data = PUSH_ARRAY(arena, u8, s->size);
+    bw.data = buffer + header_size;
     bw.data[0] = 0;
     bw.bit_idx = 0;
     bw.byte_idx = 0;
 
     for (u64 i = 0; i < s->size; i++) {
-        u8 c = s->str[i];
-        string8 bits = table->codes[c].bits;
-        write_code(&bw, &bits);
+        string8* bits = &table->codes[s->str[i]].bits;
+        write_bits(&bw, bits);
     }
 
-    u64 final_size_in_bytes = bw.byte_idx + (bw.bit_idx > 0 ? 1 : 0);
+    u64 compressed_data_len = bw.byte_idx + (bw.bit_idx > 0 ? 1 : 0);
+    string8* result = PUSH_STRUCT(arena, string8);
+    result->str = buffer;
+    result->size = header_size + compressed_data_len;
 
-    printf("original size: %lld, final size: %lld\n", s->size, final_size_in_bytes);
-
-    string8* cs = s;
-
-    return cs;
+    return result;
 }
 
 string8* decompress(mem_arena* arena, string8* s) {
-    string8* ds = s;
+    huff_header* header = (huff_header*)s->str;
+    if (header->magic != 0x46465548) { return NULL; }
 
-    return ds;
+    min_heap* heap = heapify(arena, header->counts, ASCII_UNIQUE);
+    huff_node* root = treeify(arena, heap);
+
+    string8* result = PUSH_STRUCT(arena, string8);
+    result->size = header->original_size;
+    result->str = PUSH_ARRAY(arena, u8, result->size);
+
+    bit_reader br = {0};
+    br.data = s->str + sizeof(huff_header);
+
+    for (u64 i = 0; i < result->size; i++) {
+        huff_node* node = root;
+        
+        while (node->left != NULL || node->right != NULL) {
+            u8 bit = read_bit(&br);
+            node = (bit == 0) ? node->left : node->right;
+        }
+
+        result->str[i] = node->value;
+    }
+
+    return result;
 }
 
-void generate_codes(mem_arena* arena, code_table* table, list_node* node, char* path, i32 depth) {
-    if (node == NULL) return;
+void generate_codes(
+    mem_arena* arena, code_table* table,
+    huff_node* node, char* path, i32 depth
+) {
+    if (node == NULL) { return; }
 
     if (node->left == NULL && node->right == NULL) {
         table->codes[node->value].bits.size = depth;
@@ -244,8 +237,8 @@ void generate_codes(mem_arena* arena, code_table* table, list_node* node, char* 
     generate_codes(arena, table, node->right, path, depth + 1);
 }
 
-void write_code(bit_writer* bw, string8* bits) {
-    for (int i = 0; bits->size; i++) {
+void write_bits(bit_writer* bw, string8* bits) {
+    for (u64 i = 0; i < bits->size; i++) {
         if (bits->str[i] == '1') {
             bw->data[bw->byte_idx] |= (1 << (7 - bw->bit_idx));
         }
@@ -254,23 +247,19 @@ void write_code(bit_writer* bw, string8* bits) {
 
         if (bw->bit_idx == 8) {
             bw->bit_idx = 0;
-            bw->data[bw->byte_idx++] = 0;
+            bw->data[++bw->byte_idx] = 0;
         }
     }
 }
 
-void print_tree(list_node* ln, u32 level) {
-    if (ln == NULL) { return; }
+u8 read_bit(bit_reader* br) {
+    u8 byte = br->data[br->byte_idx];
+    u8 bit = (byte >> (7 - br->bit_idx)) & 1;
 
-    print_tree(ln->right, level + 1);
-
-    for (u32 i = 0; i < level; i++) { printf("    "); }
-
-    if (ln->left == NULL && ln->right == NULL) {
-        printf("---['%c': %d]\n", ln->value, ln->occs);
-    } else {
-        printf("---(%d)\n", ln->occs);
+    br->bit_idx++;
+    if (br->bit_idx == 8) {
+        br->bit_idx = 0;
+        br->byte_idx++;
     }
-
-    print_tree(ln->left, level + 1);
+    return bit;
 }
