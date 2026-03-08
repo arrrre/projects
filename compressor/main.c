@@ -10,6 +10,7 @@
 // ./main decompress test/test_comp.txt test/test_decomp.txt
 
 #define ASCII_UNIQUE 256
+#define HEADER_MAGIC 0x46465548 // Hex for "HUFF"
 
 typedef struct {
     u8* str;
@@ -163,7 +164,7 @@ string8* compress(mem_arena* arena, string8* s) {
     u8* buffer = PUSH_ARRAY(arena, u8, header_size + max_data_size);
     
     huff_header* header = (huff_header*)buffer;
-    header->magic = 0x46465548;
+    header->magic = HEADER_MAGIC;
     header->original_size = s->size;
     memcpy(header->counts, occurences, sizeof(u32) * 256);
 
@@ -188,7 +189,7 @@ string8* compress(mem_arena* arena, string8* s) {
 
 string8* decompress(mem_arena* arena, string8* s) {
     huff_header* header = (huff_header*)s->str;
-    if (header->magic != 0x46465548) { return NULL; }
+    if (header->magic != HEADER_MAGIC) { return NULL; }
 
     min_heap* heap = heapify(arena, header->counts, ASCII_UNIQUE);
     huff_node* root = treeify(arena, heap);
