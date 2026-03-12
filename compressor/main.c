@@ -76,6 +76,14 @@ void generate_codes(
 void write_bits(bit_writer* bw, string8* bits);
 u8 read_bit(bit_reader* br);
 
+typedef struct {
+    u16 offset;
+    u16 length;
+    u8 next_char;
+} token;
+
+string8* lz_compress(mem_arena* arena, string8* s);
+
 int main(int argc, char** argv) {
     if (argc < 4) {
         printf("Usage: ./main (de)compress <input_file> <output_file>\n");
@@ -90,7 +98,8 @@ int main(int argc, char** argv) {
 
     if (strcmp(mode, "-c") == 0) {
         string8* s = string_read(perm_arena, filename_in);
-        string8* cs = compress(perm_arena, s);
+        string8* lz = lz_compress(perm_arena, s);
+        string8* cs = compress(perm_arena, lz);
         string_write(filename_out, cs);
 
         printf("%lld bytes -> %lld bytes (%.1f%%)\n", s->size, cs->size,
@@ -314,4 +323,55 @@ u8 read_bit(bit_reader* br) {
         br->byte_idx++;
     }
     return bit;
+}
+
+token find_longest_match(u8* data, u64 current_pos, u64 window_size, u64 lookahead_size, u64 total_size) {
+    token match = {0, 0, data[current_pos]};
+
+    u64 search_start = (current_pos > window_size) ? current_pos - window_size : 0;
+
+    for (u64 i = search_start; i < current_pos; i++) {
+        u64 len = 0;
+        while (len < lookahead_size && 
+               (current_pos + len) < total_size && 
+               data[i + len] == data[current_pos + len]) {
+            len++;
+        }
+
+        if (len >= match.length) {
+            match.offset = (u16)(current_pos - i);
+            match.length = (u16)len;
+            match.next_char = data[current_pos + len];
+        }
+    }
+
+    return match;
+}
+
+string8* lz_compress(mem_arena* arena, string8* s) {
+    u8* out_buffer = PUSH_ARRAY(arena, u8, s->size * 2);
+    u8* cursor = out_buffer;
+
+    u64 pos = 0;
+    while (pos < s->size) {
+        token match = find_longest_match(s->str, pos, 4096, 255, s->size);
+
+        if (match.length > 3) {
+            *cursor++ = 1;
+            *(u16*)cursor = match.offset;
+            cursor += 2;
+            *(u16*)cursor = match.length;
+            cursor += 2;
+            pos += match.length;
+        } else {
+            *cursor++ = 0;
+            *cursor++ = s->str[pos];
+            pos++;
+        }
+    }
+
+    string8* result = PUSH_STRUCT(arena, string8);
+    result->str = out_buffer;
+    result->size = (u64)(cursor - out_buffer);
+    return result;
 }
