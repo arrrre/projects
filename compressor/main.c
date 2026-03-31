@@ -59,6 +59,11 @@ typedef struct {
     u8* data_start;
 } header_read_buffer;
 
+b32 extract_args(
+    mem_arena* arena, int argc, char** argv,
+    char** mode, char** filename_in, char** filename_out
+);
+
 string8* string_read(mem_arena* arena, const char* filename);
 void string_write(const char* filename, string8* s);
 
@@ -85,21 +90,21 @@ typedef struct {
 string8* lz_compress(mem_arena* arena, string8* s);
 
 int main(int argc, char** argv) {
-    if (argc < 4) {
-        printf("Usage: ./main (de)compress <input_file> <output_file>\n");
+    if (argc < 3) {
+        printf("Usage: ./main -(c/d) <input_file>\n");
         return 1;
     }
 
     mem_arena* perm_arena = arena_create(GiB(1), MiB(1));
 
-    const char* mode = argv[1];
-    const char* filename_in = argv[2];
-    const char* filename_out = argv[3];
+    char* mode; char* filename_in; char* filename_out;
+    extract_args(perm_arena, argc, argv, &mode, &filename_in, &filename_out);
+    // printf("Mode: %s | In: %s | Out: %s\n", *mode, *filename_in, *filename_out);
 
     if (strcmp(mode, "-c") == 0) {
         string8* s = string_read(perm_arena, filename_in);
-        string8* lz = lz_compress(perm_arena, s);
-        string8* cs = compress(perm_arena, lz);
+        // string8* lz = lz_compress(perm_arena, s);
+        string8* cs = compress(perm_arena, s);
         string_write(filename_out, cs);
 
         printf("%lld bytes -> %lld bytes (%.1f%%)\n", s->size, cs->size,
@@ -128,6 +133,38 @@ int main(int argc, char** argv) {
     arena_destroy(perm_arena);
 
     return 0;
+}
+
+b32 extract_args(
+    mem_arena* arena, int argc, char** argv,
+    char** mode, char** filename_in, char** filename_out
+) {
+    if (argc < 3) { return false; }
+
+    u32 mode_len = (u32)strlen(argv[1]);
+    *mode = PUSH_ARRAY(arena, char, mode_len + 1);
+    memcpy(*mode, argv[1], mode_len + 1);
+
+    u32 in_len = (u32)strlen(argv[2]);
+    *filename_in = PUSH_ARRAY(arena, char, in_len + 1);
+    memcpy(*filename_in, argv[2], in_len + 1);
+
+    char* new_ext;
+    if (strcmp(*mode, "-c") == 0) { new_ext = ".gz"; }
+    else if (strcmp(*mode, "-d") == 0) { new_ext = ".txt"; }
+    else if (strcmp(*mode, "-t") == 0) { new_ext = ".gz"; }
+    else { return false; }
+
+    char* last_dot = strrchr(*filename_in, '.');
+    u32 base_len = last_dot ? (u32)(last_dot - *filename_in) : in_len;
+    u32 ext_len = (u32)strlen(new_ext);
+
+    *filename_out = PUSH_ARRAY(arena, char, base_len + ext_len + 1);
+    memcpy(*filename_out, *filename_in, base_len);
+    memcpy(*filename_out + base_len, new_ext, ext_len);
+    (*filename_out)[base_len + ext_len] = '\0';
+
+    return true;
 }
 
 string8* string_read(mem_arena* arena, const char* filename) {
