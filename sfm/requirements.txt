@@ -1,2 +1,4 @@
 numpy
+scipy
 opencv-python
+viser==1.0.26
