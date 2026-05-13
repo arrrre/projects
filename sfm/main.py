@@ -18,7 +18,7 @@ def init(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     Initialization of incremental bundle adjustment.
     According to algorithm 21.1 in IREG.
     """
-    kp1, kp2, desc1, desc2, _, _ = find_2d_correspondences(img1, img2, mask1, mask2, 100, 100)
+    kp1, kp2, desc1, desc2, _, _ = find_2d_correspondences(img1, img2, mask1, mask2, 90, 90)
     corr1 = np.asarray([kp.pt for kp in kp1]).T
     corr2 = np.asarray([kp.pt for kp in kp2]).T
 
@@ -29,7 +29,7 @@ def init(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     desc2 = desc2[inlier_indices, :]
 
     E = E_from_F(F, bk.K, bk.K)
-    R, t = R_t_from_E(E, bk.K, bk.K, corr1[:, 0], corr2[:, 0])
+    R, t = R_t_from_E(E, bk.K, bk.K, bk.dist_coeffs, bk.dist_coeffs, corr1[:, 0], corr2[:, 0])
 
     C1 = np.eye(3, 4)
     C2 = np.hstack((R, t))
@@ -37,7 +37,7 @@ def init(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     bk.add_view(frame_idx1, C1)
     bk.add_view(frame_idx2, C2)
 
-    points_3d = triangulate(C1, C2, bk.K, bk.K, corr1, corr2)
+    points_3d = triangulate(C1, C2, bk.K, bk.K, bk.dist_coeffs, bk.dist_coeffs, corr1, corr2)
     for i, p_3d in enumerate(points_3d.T):
         p_idx = bk.add_point(p_3d)
         bk.add_obs(frame_idx1, p_idx, corr1[:, i], desc1[i])
@@ -53,6 +53,9 @@ def adjust(bk, points_to_adjust):
     bundle_adjustment(bk)
 
 def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
+    """
+    Add new view to the SfM problem according to algorithm 21.2 in IREG.
+    """
     # 1. Standard Feature Extraction
     kp1, desc1 = interest_points(img1, mask1, n_percent=100)
     kp2, desc2 = interest_points(img2, mask2, n_percent=100)
@@ -67,6 +70,8 @@ def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     corr2d_pnp = np.array([kp2[i].pt for i in pt_indices_2d]).T
     corr3d_pnp = np.array([bk.Tpts[i] for i in pt_indices_3d]).T
 
+    print(f"{corr2d_pnp.shape=}, {corr3d_pnp.shape=}")
+
     R2, t2, inlier_indices = robust_pnp(corr2d_pnp, corr3d_pnp, bk.K, bk.dist_coeffs)
     bk.add_view(frame_idx2, np.hstack((R2, t2)))
 
@@ -76,10 +81,7 @@ def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
         p_2d_idx = pt_indices_2d[i]
         bk.add_obs(frame_idx2, p_3d_idx, kp2[p_2d_idx].pt, desc2[p_2d_idx])
 
-    # ---------------------------------------------------------
-    # 3. Handle Triangulation (New Points)
-    # ---------------------------------------------------------
-    
+
     # Match kp1 and kp2 to find potential new 3D points
     # kp1m/kp2m are the matched keypoints, desc1m/desc2m are their descriptors
     # Make sure your match_points returns the indices as well!
@@ -92,61 +94,39 @@ def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     mask_new = [i not in pnp_used_2d_indices for i in idx2]
     new_pts1 = np.array([p.pt for p in np.array(kp1m)[mask_new]]).T
     new_pts2 = np.array([p.pt for p in np.array(kp2m)[mask_new]]).T
+    new_descs1 = np.array(desc1m)[mask_new]
     new_descs2 = np.array(desc2m)[mask_new]
+
+    # return new_pts1, new_pts2, new_descs1, new_descs2
 
     if len(new_pts1.T) > 0:
         # Get Poses
         C1 = bk.get_view(frame_idx1) # [R1 | t1]
         C2 = bk.get_view(frame_idx2) # [R2 | t2]
-        
-        # Triangulate (use your optimized OpenCV-based triangulate function)
-        X_new = triangulate(C1, C2, bk.K, bk.K, new_pts1, new_pts2)
-        
-        # Add the brand new points to Bookkeeper
+        R1 = C1[:3, :3]; t1 = C1[:, 3]
+        R2 = C2[:3, :3]; t2 = C2[:, 3]
+
+        X_new = triangulate(C1, C2, bk.K, bk.K, bk.dist_coeffs, bk.dist_coeffs, new_pts1, new_pts2)
+
         for i in range(X_new.shape[1]):
-            # Optional: Add a "cheirality check" here to ensure X_new is in front of cameras
-            pt_idx = bk.add_point(X_new[:, i])
-            # Add obs for both frames so the point has a history
-            bk.add_obs(frame_idx1, pt_idx, new_pts1[:, i], new_descs2[i]) # approx desc
-            bk.add_obs(frame_idx2, pt_idx, new_pts2[:, i], new_descs2[i])
+            p_3d = X_new[:, i]
 
-# def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
-#     # 1. Get features for the images
-#     kp1, desc1 = interest_points(img1, mask1, n_percent=100)
-#     kp2, desc2 = interest_points(img2, mask2, n_percent=100)
+            # Project back to both images
 
-#     indices_3d, descs_3d = bk.get_dcs()
+            p1_proj, _ = cv.projectPoints(p_3d, R1, t1, bk.K, bk.dist_coeffs)
+            p2_proj, _ = cv.projectPoints(p_3d, R2, t2, bk.K, bk.dist_coeffs)
 
-#     # 2. Find 2D-3D correspondences
-#     # Match the NEW descriptors against the ENTIRE Bookkeeper 3D library
-#     pt_indices_3d, pt_indices_2d = find_2d_3d_correspondences(indices_3d, descs_3d, desc2)
+            err1 = np.linalg.norm(p1_proj - new_pts1[:, i])
+            err2 = np.linalg.norm(p2_proj - new_pts2[:, i])
 
-#     if len(pt_indices_3d) < 6:
-#         raise ValueError(f"PnP failed: only {len(pt_indices_3d)} 2D-3D matches found.")
-
-#     kp1m, kp2m, desc1m, desc2m = match_points(kp1, kp2, desc1, desc2, n_percent=100)
-
-
-#     # 3. Prepare data for PnP
-#     corr2d = np.array([kp2[i].pt for i in pt_indices_2d]).T
-#     corr3d = np.array([bk.Tpts[i] for i in pt_indices_3d]).T
-
-#     # 4. Solve PnP
-#     R, t, inliers = robust_pnp(corr2d, corr3d, bk.K, bk.dist_coeffs)
-    
-#     # 5. Update Bookkeeper
-#     bk.add_view(frame_idx2, np.hstack((R, t)))
-    
-#     # Add observations only for the inliers
-#     for i in inliers:
-#         p_3d_idx = pt_indices_3d[i]
-#         p_2d_idx = pt_indices_2d[i]
-#         bk.add_obs(frame_idx2, p_3d_idx, kp2[p_2d_idx].pt, desc2[p_2d_idx])
+            if err1 < 5.0 and err2 < 5.0: 
+                p_idx = bk.add_point(p_3d)
+                bk.add_obs(frame_idx1, p_idx, new_pts1[:, i], new_descs1[i])
+                bk.add_obs(frame_idx2, p_idx, new_pts2[:, i], new_descs2[i])
 
 def add_new_3d_points(bk, frame_idx1, frame_idx2, corr1, corr2, desc1, desc2, threshold = 5.0):
     """
-    Add new 3D points to the SfM problem.
-    According to algorithm 21.3 in IREG.
+    Add new 3D points to the SfM problem according to algorithm 21.3 in IREG.
     """
     C1 = bk.get_view(frame_idx1)
     C2 = bk.get_view(frame_idx2)
@@ -166,32 +146,6 @@ def add_new_3d_points(bk, frame_idx1, frame_idx2, corr1, corr2, desc1, desc2, th
             bk.add_obs(frame_idx1, p_idx, corr1[:, i], desc1[i])
             bk.add_obs(frame_idx2, p_idx, corr2[:, i], desc2[i])
 
-# def loop(bk, img1, img2, mask1, mask2, frame_idx1, frame_idx2):
-#     corr1, corr2, kp1, kp2, des1, des2 = find_correspondences(img1, img2, mask1, mask2, 100, 100)
-
-#     corr2d, corr3d = match_image_to_3d_points(
-#         bk,
-#         kp2,
-#         des2,
-#         ratio_threshold=0.8
-#     )
-
-#     R, t = robust_pnp(corr2d, corr3d)
-
-#     C1 = bk.get_view(frame_idx1)
-#     C2 = np.hstack((R, t))
-#     bk.add_view(frame_idx2, C2)
-
-#     points_3d = triangulate(corr1, corr2, C1, C2, bk.K, bk.K)
-#     for i, p_3d in enumerate(points_3d.T):
-#         p_idx = bk.add_point(p_3d)
-#         bk.add_obs(frame_idx1, p_idx, corr1[:, i])
-#         bk.add_obs(frame_idx2, p_idx, corr2[:, i])
-#         bk.add_des(p_idx, des1[i])
-#         bk.add_des(p_idx, des2[i])
-
-#     bundle_adjustment(bk)
-
 def sfm(bk, dataset_path, dataset_name, num_images = 36):
     mask = cv.imread(dataset_path / f"{dataset_name}_mask.png")
 
@@ -210,12 +164,12 @@ def sfm(bk, dataset_path, dataset_name, num_images = 36):
             # corr1_no3d, corr2_no3d, desc1_no3d, desc2_no3d = add_new_view(
             #     bk, frame_idx1, frame_idx2, img1, img2, mask, mask
             # )
-            # points_to_adjust = len(bk.Tpts)
+            points_to_adjust = len(bk.Tpts)
             # add_new_3d_points(bk, frame_idx1, frame_idx2, corr1_no3d, corr2_no3d, desc1_no3d, desc2_no3d)
 
             add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask, mask)
 
-        adjust(bk, points_to_adjust)
+            adjust(bk, points_to_adjust)
 
 def visualize(bk, dataset_path):
     print("Starting visualization!")

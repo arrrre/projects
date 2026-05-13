@@ -33,7 +33,12 @@ class Bookkeeper:
 
     def add_obs(self, frame_idx, point_idx, coord, desc):
         self.Tobs[(frame_idx, point_idx)] = coord
-        self.Tdcs[point_idx].append(desc)
+        self.add_desc(point_idx, desc)
+
+    def add_desc(self, point_idx, desc):
+        descs = self.Tdcs[point_idx]
+        if not any(np.array_equal(desc, existing) for existing in descs):
+            descs.append(desc)
 
     def get_view(self, frame_idx):
         return self.Tvws.get(frame_idx)
@@ -52,8 +57,5 @@ class Bookkeeper:
             for desc in point_desc:
                 point_indices.append(point_idx)
                 point_descs.append(desc)
-
-        # if not point_descs:
-        #     return np.empty((0, 128), dtype=np.float32), np.empty(0, dtype=int)
 
         return np.asarray(point_indices, dtype=int), np.asarray(point_descs, dtype=np.float32)

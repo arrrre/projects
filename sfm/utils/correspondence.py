@@ -44,6 +44,33 @@ def find_2d_correspondences(img1, img2, mask1, mask2, p_points, p_matches):
     return match_points(kp1, kp2, desc1, desc2, p_matches)
 
 def find_2d_3d_correspondences(indices_3d, descs_3d, desc2, ratio_threshold=0.8):
+    matcher = cv.BFMatcher()
+    matches = matcher.knnMatch(desc2, descs_3d, k=min(32, len(descs_3d)))
+    
+    selected_3d_indices = []
+    selected_2d_indices = []
+
+    for m_list in matches:
+        if len(m_list) < 2: continue
+        
+        best_m = m_list[0]
+        best_pt_idx = indices_3d[best_m.trainIdx]
+        
+        second_best_m = None
+        for next_m in m_list[1:]:
+            if indices_3d[next_m.trainIdx] != best_pt_idx:
+                second_best_m = next_m
+                break
+        
+        if second_best_m is None: continue
+
+        if best_m.distance < ratio_threshold * second_best_m.distance:
+            selected_3d_indices.append(best_pt_idx)
+            selected_2d_indices.append(best_m.queryIdx)
+
+    return np.array(selected_3d_indices), np.array(selected_2d_indices)
+
+def find_2d_3d_correspondences2(indices_3d, descs_3d, desc2, ratio_threshold=0.8):
     if len(desc2) == 0 or len(descs_3d) < 2:
         return np.empty(0, dtype=int), np.empty(0, dtype=int)
 

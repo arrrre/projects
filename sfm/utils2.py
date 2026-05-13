@@ -141,7 +141,7 @@ def E_from_F(F, K1, K2):
     return K1.T @ F @ K2
     # return K2.T @ F @ K1
 
-def R_t_from_E(E, K1, K2, x1, x2):
+def R_t_from_E(E, K1, K2, dist_coeffs1, dist_coeffs2, x1, x2):
     U, S, V_T = np.linalg.svd(E)
     V = V_T.T
 
@@ -168,16 +168,18 @@ def R_t_from_E(E, K1, K2, x1, x2):
     ]
 
     for C2 in potential_C2:
-        X1 = triangulate(C1, C2, K1, K2, x1, x2)
+        X1 = triangulate(C1, C2, K1, K2, dist_coeffs1, dist_coeffs2, x1, x2)
         R, t = np.hsplit(C2, [3])
         X2 = R @ X1 + t
 
         if (X1[2] > 0) and (X2[2] > 0):
             return R, t
 
-def triangulate(C1, C2, K1, K2, x1, x2):
-    x1_norm = np.linalg.inv(K1) @ homog(x1)
-    x2_norm = np.linalg.inv(K2) @ homog(x2)
+def triangulate(C1, C2, K1, K2, dist_coeffs1, dist_coeffs2, x1, x2):
+    x1_und = undistort(x1, K1, dist_coeffs1)
+    x2_und = undistort(x2, K2, dist_coeffs2)
+    x1_norm = np.linalg.inv(K1) @ homog(x1_und)
+    x2_norm = np.linalg.inv(K2) @ homog(x2_und)
 
     pts1 = x1_norm[:2, :].T.reshape(1, -1, 2).astype(np.float32)
     pts2 = x2_norm[:2, :].T.reshape(1, -1, 2).astype(np.float32)
@@ -189,6 +191,11 @@ def triangulate(C1, C2, K1, K2, x1, x2):
     X_hom = cv.triangulatePoints(C1, C2, pts1_corr.reshape(-1, 2).T, pts2_corr.reshape(-1, 2).T)
 
     return X_hom[:3] / X_hom[3]
+
+def undistort(points, K, dist_coeffs):
+    points_cv = points.T.reshape(-1, 1, 2).astype(np.float32)
+    undistorted = cv.undistortPoints(points_cv, K, dist_coeffs, P=K)
+    return undistorted.reshape(-1, 2).T
 
 def robust_f(corr1, corr2, N=10000, threshold=1.25):
     curr_inliers = 0
@@ -236,6 +243,8 @@ def robust_pnp(
     )
 
     if not success or inliers is None or len(inliers) < 4:
+        print(f"Sample 2D point: {corr2d[:, 0]}")
+        print(f"Sample 3D point: {corr3d[:, 0]}")
         raise ValueError("PnP RANSAC failed to find at least four inliers.")
 
     inlier_indices = inliers.ravel()

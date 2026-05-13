@@ -88,16 +88,6 @@ def bundle_adjustment(bk):
     pts_3d = np.array([bk.Tpts[p_id] for p_id in unique_pt_ids])
     
     x0 = np.hstack([np.array(cam_params).ravel(), pts_3d.ravel()])
-
-    f0 = compute_residuals(
-        x0,
-        n_views,
-        n_points,
-        view_indices,
-        point_indices,
-        points_2d,
-        bk.K,
-    )
     
     # 4. Solve
     n_views = len(view_ids)
@@ -107,6 +97,16 @@ def bundle_adjustment(bk):
     res = least_squares(
         compute_residuals, x0, jac_sparsity=A, x_scale='jac', ftol=1e-4, method='trf',
         args=(n_views, n_points, view_indices, point_indices, points_2d, bk.K)
+    )
+
+    f0 = compute_residuals(
+        x0,
+        n_views,
+        n_points,
+        view_indices,
+        point_indices,
+        points_2d,
+        bk.K,
     )
 
     print(f"Initial residual: {np.sqrt(np.mean(f0** 2, axis=0) )}")
