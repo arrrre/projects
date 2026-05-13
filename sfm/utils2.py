@@ -190,49 +190,6 @@ def triangulate(C1, C2, K1, K2, x1, x2):
 
     return X_hom[:3] / X_hom[3]
 
-def get_best_points(kp, des, n_percent):
-    combined = sorted(zip(kp, des), key=lambda x: x[0].response, reverse=True)
-    top_n = combined[:int(len(combined) * n_percent / 100)]
-
-    new_kp = [x[0] for x in top_n]
-    new_des = np.array([x[1] for x in top_n])
-    return new_kp, new_des
-
-def get_best_matches(kp1, kp2, des1, des2, n_percent):
-    matcher = cv.BFMatcher()
-    matches = matcher.knnMatch(des1, des2, k=2)
-    safe = sorted([m for m, k in matches if m.distance < 0.75 * k.distance], key=lambda x: x.distance)
-    safe = safe[:int(len(safe) * n_percent / 100)]
-
-    pts1 = np.array([kp1[m.queryIdx].pt for m in safe]).T
-    pts2 = np.array([kp2[m.trainIdx].pt for m in safe]).T
-
-    sel_kp1 = [kp1[m.queryIdx] for m in safe]
-    sel_kp2 = [kp2[m.trainIdx] for m in safe]
-    sel_des1 = des1[[m.queryIdx for m in safe]]
-    sel_des2 = des2[[m.trainIdx for m in safe]]
-
-    return pts1, pts2, sel_kp1, sel_kp2, sel_des1, sel_des2
-
-def find_correspondences(img1, img2, mask1, mask2, p_points, p_matches):
-    img1 = cv.cvtColor(img1, cv.COLOR_BGR2GRAY)
-    img2 = cv.cvtColor(img2, cv.COLOR_BGR2GRAY)
-    mask1 = cv.cvtColor(mask1, cv.COLOR_BGR2GRAY)
-    _, mask1 = cv.threshold(mask1, 0, 255, cv.THRESH_BINARY)
-    mask2 = cv.cvtColor(mask2, cv.COLOR_BGR2GRAY)
-    _, mask2 = cv.threshold(mask2, 0, 255, cv.THRESH_BINARY)
-
-    sift = cv.SIFT_create()
-    kp1, des1 = sift.detectAndCompute(img1, mask1)
-    kp2, des2 = sift.detectAndCompute(img2, mask2)
-
-    kp1, des1 = get_best_points(kp1, des1, p_points)
-    kp2, des2 = get_best_points(kp2, des2, p_points)
-
-    corr1, corr2, kp1, kp2, des1, des2 = get_best_matches(kp1, kp2, des1, des2, p_matches)
-
-    return corr1, corr2, kp1, kp2, des1, des2
-
 def robust_f(corr1, corr2, N=10000, threshold=1.25):
     curr_inliers = 0
     curr_indices = []
@@ -256,68 +213,16 @@ def robust_f(corr1, corr2, N=10000, threshold=1.25):
 
     return curr_F, curr_indices
 
-def robust_pnp(corr1, corr2, corr3d, K, dist_coeffs, N=10000, threshold=2.25):
-    curr_inliers = 0
-    curr_indices = []
-    curr_rvec = None
-    curr_tvec = None
-
-    for _ in range(N):
-        random_indices = np.random.choice(corr1.shape[1], 3, replace=False)
-
-        success, rvecs, tvecs = cv.solveP3P(
-            corr3d[:, random_indices].T,
-            corr2[:, random_indices].T,
-            K,
-            dist_coeffs,
-            flags=cv.SOLVEPNP_P3P
-        )
-
-        for j in range(success):
-            points_proj, _ = cv.projectPoints(corr3d.T, rvecs[j], tvecs[j], K, dist_coeffs)
-            points_proj = points_proj.reshape(-1, 2)
-
-            error = np.linalg.norm(points_proj - corr2.T, axis=1)
-            inliers_mask = error < threshold
-            num_inliers = np.sum(inliers_mask)
-
-            if num_inliers > curr_inliers:
-                curr_inliers = num_inliers
-                curr_indices = inliers_mask
-                curr_rvec = rvecs[j]
-                curr_tvec = tvecs[j]
-
-    R, _ = cv.Rodrigues(curr_rvec)
-    t = curr_tvec
-
-    if curr_inliers >= 4:
-        success, rvec, tvec = cv.solvePnP(
-            corr3d[:,curr_indices].T,
-            corr2[:,curr_indices].T,
-            K,
-            dist_coeffs,
-            rvec=curr_rvec,
-            tvec=curr_tvec,
-            useExtrinsicGuess=True,
-            flags=cv.SOLVEPNP_ITERATIVE
-        )
-        R, _ = cv.Rodrigues(rvec)
-        t = tvec
-
-    return R, t, corr1[:, curr_indices], corr2[:, curr_indices], corr3d[:, curr_indices]
-
 def robust_pnp(
-    corr2,
+    corr2d,
     corr3d,
-    point_indices,
-    point_descriptors,
     K,
     dist_coeffs,
     N=10000,
     threshold=5.0,
 ):
     object_points = corr3d.T.astype(np.float32)
-    image_points = corr2.T.astype(np.float32)
+    image_points = corr2d.T.astype(np.float32)
 
     success, rvec, tvec, inliers = cv.solvePnPRansac(
         object_points,
@@ -344,18 +249,10 @@ def robust_pnp(
         useExtrinsicGuess=True,
         flags=cv.SOLVEPNP_ITERATIVE,
     )
+
     if not success:
         raise ValueError("PnP refinement failed.")
 
     R, _ = cv.Rodrigues(rvec)
-    return (
-        R,
-        tvec,
-        corr2[:, inlier_indices],
-        corr3d[:, inlier_indices],
-        point_indices[inlier_indices],
-        point_descriptors[inlier_indices],
-    )
 
-def bundle_adjustment(bk):
-    pass
+    return R, tvec, inlier_indices

@@ -7,71 +7,26 @@ import numpy as np
 import viser
 import viser.transforms as vtf
 
-from utils import find_correspondences, robust_f, E_from_F, R_t_from_E, triangulate, robust_pnp, bundle_adjustment
+from Bookkeeper import Bookkeeper
 
-class Bookkeeper:
+from utils2 import robust_f, fmatrix_from_cameras, E_from_F, R_t_from_E, triangulate, robust_pnp
+from utils.bundle_adjustment import bundle_adjustment
+from utils.correspondence import interest_points, match_points, find_2d_correspondences, find_2d_3d_correspondences
+
+def init(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
     """
-    Usage:
-    bk = Bookkeeper()
-    bk.add_view(frame_idx, pose)
-    point_idx = bk.add_point(coord3d)
-    bk.add_obs(frame_idx, point_idx, coord2d)
-    bk.add_des(point_idx, des)
+    Initialization of incremental bundle adjustment.
+    According to algorithm 21.1 in IREG.
     """
-
-    def __init__(self):
-        self.K = np.array([
-            [1660.076384971925, 0, 763.9663384634628],
-            [0, 1656.285062933074, 986.3176281647676],
-            [0, 0, 1],
-        ])
-        self.dist_coeffs = np.array([
-            0.250022, -1.49939, -0.00296536, 0.00109332, 2.83634
-        ])
-
-        self.Tvws = {} # views
-        self.Tpts = [] # 3d points
-        self.Tobs = {} # observations
-
-        self.Tdcs = {} # descriptors
-
-    def __repr__(self):
-        return f"Bookkeeper(Views: {len(self.Tvws)}, Points: {len(self.Tpts)}, Obs: {len(self.Tobs)})"
-
-    def add_view(self, frame_idx, pose):
-        self.Tvws[frame_idx] = pose
-    
-    def add_point(self, coord):
-        self.Tpts.append(coord)
-        point_idx = len(self.Tpts) - 1
-        self.Tdcs[point_idx] = []
-        return point_idx
-    
-    def add_obs(self, frame_idx, point_idx, coord):
-        self.Tobs[(frame_idx, point_idx)] = coord
-
-    def add_des(self, point_idx, des):
-        self.Tdcs[point_idx].append(des)
-
-    def get_view(self, frame_idx):
-        return self.Tvws[frame_idx]
-    
-    def get_point(self, point_idx):
-        return self.Tpts[point_idx]
-    
-    def get_obs(self, frame_idx, point_idx):
-        return self.Tobs[(frame_idx, point_idx)]
-
-def init(bk, img1, img2, mask1, mask2, frame_idx1, frame_idx2):
-    corr1, corr2, _, _, des1, des2 = find_correspondences(img1, img2, mask1, mask2, 100, 100)
-    n = min(corr1.shape[1], corr2.shape[1]) # TODO: why not the same size already?
-    corr1 = corr1[:, :n]; corr2 = corr2[:, :n]
+    kp1, kp2, desc1, desc2, _, _ = find_2d_correspondences(img1, img2, mask1, mask2, 100, 100)
+    corr1 = np.asarray([kp.pt for kp in kp1]).T
+    corr2 = np.asarray([kp.pt for kp in kp2]).T
 
     F, inlier_indices = robust_f(corr1, corr2, N=10000, threshold=1.25)
     corr1 = corr1[:, inlier_indices]
     corr2 = corr2[:, inlier_indices]
-    des1 = des1[inlier_indices, :]
-    des2 = des2[inlier_indices, :]
+    desc1 = desc1[inlier_indices, :]
+    desc2 = desc2[inlier_indices, :]
 
     E = E_from_F(F, bk.K, bk.K)
     R, t = R_t_from_E(E, bk.K, bk.K, corr1[:, 0], corr2[:, 0])
@@ -85,32 +40,157 @@ def init(bk, img1, img2, mask1, mask2, frame_idx1, frame_idx2):
     points_3d = triangulate(C1, C2, bk.K, bk.K, corr1, corr2)
     for i, p_3d in enumerate(points_3d.T):
         p_idx = bk.add_point(p_3d)
-        bk.add_obs(frame_idx1, p_idx, corr1[:, i])
-        bk.add_obs(frame_idx2, p_idx, corr2[:, i])
-        bk.add_des(p_idx, des1[i])
-        bk.add_des(p_idx, des2[i])
+        bk.add_obs(frame_idx1, p_idx, corr1[:, i], desc1[i])
+        bk.add_obs(frame_idx2, p_idx, corr2[:, i], desc2[i])
 
-def loop(bk, img1, img2, mask1, mask2, frame_idx1, frame_idx2):
-    corr1, corr2, _, _, des1, des2 = find_correspondences(img1, img2, mask1, mask2, 100, 100)
-
-
-    
-
-    R, t = robust_pnp()
-
-    C1 = bk.get_view(frame_idx1)
-    C2 = np.hstack((R, t))
-    bk.add_view(frame_idx2, C2)
-
-    points_3d = triangulate(corr1, corr2, C1, C2, bk.K, bk.K)
-    for i, p_3d in enumerate(points_3d.T):
-        p_idx = bk.add_point(p_3d)
-        bk.add_obs(frame_idx1, p_idx, corr1[:, i])
-        bk.add_obs(frame_idx2, p_idx, corr2[:, i])
-        bk.add_des(p_idx, des1[i])
-        bk.add_des(p_idx, des2[i])
-
+def adjust(bk, points_to_adjust):
+    """
+    Select inliers: T'points
+    Bundle adjustment
+    Re-triangulate
+    Remove outliers
+    """
     bundle_adjustment(bk)
+
+def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
+    # 1. Standard Feature Extraction
+    kp1, desc1 = interest_points(img1, mask1, n_percent=100)
+    kp2, desc2 = interest_points(img2, mask2, n_percent=100)
+
+    # 2. Handle PnP (Localization)
+    indices_3d, descs_3d = bk.get_dcs()
+    pt_indices_3d, pt_indices_2d = find_2d_3d_correspondences(indices_3d, descs_3d, desc2)
+
+    if len(pt_indices_3d) < 6:
+        raise ValueError(f"PnP failed: only {len(pt_indices_3d)} 2D-3D matches found.")
+
+    corr2d_pnp = np.array([kp2[i].pt for i in pt_indices_2d]).T
+    corr3d_pnp = np.array([bk.Tpts[i] for i in pt_indices_3d]).T
+
+    R2, t2, inlier_indices = robust_pnp(corr2d_pnp, corr3d_pnp, bk.K, bk.dist_coeffs)
+    bk.add_view(frame_idx2, np.hstack((R2, t2)))
+
+    # Record observations for existing 3D points
+    for i in inlier_indices:
+        p_3d_idx = pt_indices_3d[i]
+        p_2d_idx = pt_indices_2d[i]
+        bk.add_obs(frame_idx2, p_3d_idx, kp2[p_2d_idx].pt, desc2[p_2d_idx])
+
+    # ---------------------------------------------------------
+    # 3. Handle Triangulation (New Points)
+    # ---------------------------------------------------------
+    
+    # Match kp1 and kp2 to find potential new 3D points
+    # kp1m/kp2m are the matched keypoints, desc1m/desc2m are their descriptors
+    # Make sure your match_points returns the indices as well!
+    kp1m, kp2m, desc1m, desc2m, idx1, idx2 = match_points(kp1, kp2, desc1, desc2, n_percent=100)
+
+    # Filter out points that are ALREADY in the 3D library
+    # We don't want to duplicate points
+    pnp_used_2d_indices = set(pt_indices_2d[inlier_indices])
+    
+    mask_new = [i not in pnp_used_2d_indices for i in idx2]
+    new_pts1 = np.array([p.pt for p in np.array(kp1m)[mask_new]]).T
+    new_pts2 = np.array([p.pt for p in np.array(kp2m)[mask_new]]).T
+    new_descs2 = np.array(desc2m)[mask_new]
+
+    if len(new_pts1.T) > 0:
+        # Get Poses
+        C1 = bk.get_view(frame_idx1) # [R1 | t1]
+        C2 = bk.get_view(frame_idx2) # [R2 | t2]
+        
+        # Triangulate (use your optimized OpenCV-based triangulate function)
+        X_new = triangulate(C1, C2, bk.K, bk.K, new_pts1, new_pts2)
+        
+        # Add the brand new points to Bookkeeper
+        for i in range(X_new.shape[1]):
+            # Optional: Add a "cheirality check" here to ensure X_new is in front of cameras
+            pt_idx = bk.add_point(X_new[:, i])
+            # Add obs for both frames so the point has a history
+            bk.add_obs(frame_idx1, pt_idx, new_pts1[:, i], new_descs2[i]) # approx desc
+            bk.add_obs(frame_idx2, pt_idx, new_pts2[:, i], new_descs2[i])
+
+# def add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask1, mask2):
+#     # 1. Get features for the images
+#     kp1, desc1 = interest_points(img1, mask1, n_percent=100)
+#     kp2, desc2 = interest_points(img2, mask2, n_percent=100)
+
+#     indices_3d, descs_3d = bk.get_dcs()
+
+#     # 2. Find 2D-3D correspondences
+#     # Match the NEW descriptors against the ENTIRE Bookkeeper 3D library
+#     pt_indices_3d, pt_indices_2d = find_2d_3d_correspondences(indices_3d, descs_3d, desc2)
+
+#     if len(pt_indices_3d) < 6:
+#         raise ValueError(f"PnP failed: only {len(pt_indices_3d)} 2D-3D matches found.")
+
+#     kp1m, kp2m, desc1m, desc2m = match_points(kp1, kp2, desc1, desc2, n_percent=100)
+
+
+#     # 3. Prepare data for PnP
+#     corr2d = np.array([kp2[i].pt for i in pt_indices_2d]).T
+#     corr3d = np.array([bk.Tpts[i] for i in pt_indices_3d]).T
+
+#     # 4. Solve PnP
+#     R, t, inliers = robust_pnp(corr2d, corr3d, bk.K, bk.dist_coeffs)
+    
+#     # 5. Update Bookkeeper
+#     bk.add_view(frame_idx2, np.hstack((R, t)))
+    
+#     # Add observations only for the inliers
+#     for i in inliers:
+#         p_3d_idx = pt_indices_3d[i]
+#         p_2d_idx = pt_indices_2d[i]
+#         bk.add_obs(frame_idx2, p_3d_idx, kp2[p_2d_idx].pt, desc2[p_2d_idx])
+
+def add_new_3d_points(bk, frame_idx1, frame_idx2, corr1, corr2, desc1, desc2, threshold = 5.0):
+    """
+    Add new 3D points to the SfM problem.
+    According to algorithm 21.3 in IREG.
+    """
+    C1 = bk.get_view(frame_idx1)
+    C2 = bk.get_view(frame_idx2)
+    F = fmatrix_from_cameras(C1, C2)
+    E = E_from_F(F, bk.K, bk.K)
+    R2 = C2[:3, :3]; t2 = C2[:, 3]
+
+    points_3d = triangulate(C1, C2, bk.K, bk.K, corr1, corr2)
+    # points_proj = cv.projectPoints(points_3d.T, R2, t2, bk.K, bk.dist_coeffs)
+    for i, p_3d in enumerate(points_3d.T):
+        point_proj, _ = cv.projectPoints(p_3d, R2, t2, bk.K, bk.dist_coeffs)
+        point_proj = point_proj.squeeze()
+
+        error = np.linalg.norm(point_proj - corr2[:, i])
+        if error < threshold:
+            p_idx = bk.add_point(p_3d)
+            bk.add_obs(frame_idx1, p_idx, corr1[:, i], desc1[i])
+            bk.add_obs(frame_idx2, p_idx, corr2[:, i], desc2[i])
+
+# def loop(bk, img1, img2, mask1, mask2, frame_idx1, frame_idx2):
+#     corr1, corr2, kp1, kp2, des1, des2 = find_correspondences(img1, img2, mask1, mask2, 100, 100)
+
+#     corr2d, corr3d = match_image_to_3d_points(
+#         bk,
+#         kp2,
+#         des2,
+#         ratio_threshold=0.8
+#     )
+
+#     R, t = robust_pnp(corr2d, corr3d)
+
+#     C1 = bk.get_view(frame_idx1)
+#     C2 = np.hstack((R, t))
+#     bk.add_view(frame_idx2, C2)
+
+#     points_3d = triangulate(corr1, corr2, C1, C2, bk.K, bk.K)
+#     for i, p_3d in enumerate(points_3d.T):
+#         p_idx = bk.add_point(p_3d)
+#         bk.add_obs(frame_idx1, p_idx, corr1[:, i])
+#         bk.add_obs(frame_idx2, p_idx, corr2[:, i])
+#         bk.add_des(p_idx, des1[i])
+#         bk.add_des(p_idx, des2[i])
+
+#     bundle_adjustment(bk)
 
 def sfm(bk, dataset_path, dataset_name, num_images = 36):
     mask = cv.imread(dataset_path / f"{dataset_name}_mask.png")
@@ -122,11 +202,20 @@ def sfm(bk, dataset_path, dataset_name, num_images = 36):
 
         if i == 1:
             print(f"Initializing with frames {frame_idx1:02d} and {frame_idx2:02d}")
-            init(bk, img1, img2, mask, mask, frame_idx1, frame_idx2)
-            break
+            init(bk, frame_idx1, frame_idx2, img1, img2, mask, mask)
+            points_to_adjust = len(bk.Tpts)
         else:
             print(f"Adding frame {frame_idx2:02d}")
-            loop(bk, img1, img2, mask, mask, frame_idx1, frame_idx2)
+            # loop(bk, img1, img2, mask, mask, frame_idx1, frame_idx2)
+            # corr1_no3d, corr2_no3d, desc1_no3d, desc2_no3d = add_new_view(
+            #     bk, frame_idx1, frame_idx2, img1, img2, mask, mask
+            # )
+            # points_to_adjust = len(bk.Tpts)
+            # add_new_3d_points(bk, frame_idx1, frame_idx2, corr1_no3d, corr2_no3d, desc1_no3d, desc2_no3d)
+
+            add_new_view(bk, frame_idx1, frame_idx2, img1, img2, mask, mask)
+
+        adjust(bk, points_to_adjust)
 
 def visualize(bk, dataset_path):
     print("Starting visualization!")
@@ -134,7 +223,6 @@ def visualize(bk, dataset_path):
     server = viser.ViserServer()
 
     points = np.asarray(bk.Tpts, dtype=float).reshape(-1, 3)
-    print(f"{points.shape=}")
     if points.shape[0] > 0:
         points_center = np.mean(points, axis=0)
         points = points - points_center
@@ -244,18 +332,28 @@ def main():
     dataset_path = Path(args.dataset_path) / args.dataset_name
     use_stored = args.use_stored
 
+    K = np.array([
+        [1660.076384971925, 0, 763.9663384634628],
+        [0, 1656.285062933074, 986.3176281647676],
+        [0, 0, 1],
+    ])
+    dist_coeffs = np.array([
+        0.250022, -1.49939, -0.00296536, 0.00109332, 2.83634
+    ])
+
     if use_stored:
         with open('geometry.pkl', 'rb') as file:
             bk = pickle.load(file)
     else:
-        bk = Bookkeeper()
+        bk = Bookkeeper(K, dist_coeffs)
         sfm(bk, dataset_path, dataset_name)
 
         with open("geometry.pkl", "wb") as file:
             pickle.dump(bk, file)
 
     print(bk)
-    print(bk.Tvws)
+
+    # densify(bk)
 
     visualize(bk, dataset_path)
 
