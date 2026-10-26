@@ -15,6 +15,7 @@ class Bookkeeper:
 
         self.Tvws = {} # views
         self.Tpts = [] # 3d points
+        # self.Tpts = {}
         self.Tobs = {} # observations
 
         self.Tdcs = {} # descriptors
@@ -26,10 +27,14 @@ class Bookkeeper:
         self.Tvws[frame_idx] = pose
 
     def add_point(self, coord):
+        point_idx = len(self.Tpts)
         self.Tpts.append(coord)
-        point_idx = len(self.Tpts) - 1
         self.Tdcs[point_idx] = []
         return point_idx
+        # point_idx = len(self.Tpts) # need to find largest index - can be different. max(self.Tpts.keys()) + 1?
+        # self.Tpts[point_idx] = coord
+        # self.Tdcs[point_idx] = []
+        # return point_idx
 
     def add_obs(self, frame_idx, point_idx, coord, desc):
         self.Tobs[(frame_idx, point_idx)] = coord
